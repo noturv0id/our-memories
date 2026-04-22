@@ -5,6 +5,8 @@ const supabaseClient = supabase.createClient(
   SUPABASE_URL,
   SUPABASE_ANON_KEY
 );
+const ANNIVERSARY_WRAPPER_URL =
+  'https://noturv0id.github.io/our-memories/anniversary-wrapper.html';
 const STICKER_MIME_TYPE = 'application/x-our-memories-sticker';
 let hasRenderedEmojiPicker = false;
 const STICKER_PICKER_GROUPS = [
@@ -141,7 +143,7 @@ const STICKER_PICKER_GROUPS = [
         <div style="font-size:0.94rem;line-height:1.5;">drink some water, take a breath, and remember you are loved ♡</div>
         <a
           class="soft-btn"
-          href="https://noturv0id.github.io/our-memories/anniversary-wrapper.html"
+          href="${ANNIVERSARY_WRAPPER_URL}"
           target="_blank"
           style="justify-self:start;text-decoration:none;display:inline-flex;align-items:center;"
         >
@@ -437,7 +439,16 @@ if (normalizedId === 'wishlist' || normalizedTitle.includes('wishlist')) {
     `;
   }
 
-  return widget.content || '';
+  return normalizeAnniversaryLinks(widget.content || '');
+}
+
+function normalizeAnniversaryLinks(html) {
+  return String(html || '')
+    .replace(/href=(["'])\.\/toto%20%26%20dodo%20anniversary\/index\.html\1/gi, `href=$1${ANNIVERSARY_WRAPPER_URL}$1`)
+    .replace(/href=(["'])\.\/toto\s*&amp;\s*dodo\s*anniversary\/index\.html\1/gi, `href=$1${ANNIVERSARY_WRAPPER_URL}$1`)
+    .replace(/href=(["'])\.\/toto\s*&\s*dodo\s*anniversary\/index\.html\1/gi, `href=$1${ANNIVERSARY_WRAPPER_URL}$1`)
+    .replace(/href=(["'])https:\/\/noturv0id\.github\.io\/our-memories\/toto%20%26%20dodo%20anniversary\/index\.html\1/gi, `href=$1${ANNIVERSARY_WRAPPER_URL}$1`)
+    .replace(/href=(["'])https:\/\/notur0id\.github\.io\/our-memories\/toto%20%26%20dodo%20anniversary\/index\.html\1/gi, `href=$1${ANNIVERSARY_WRAPPER_URL}$1`);
 }
 
 async function loadWidgets() {
