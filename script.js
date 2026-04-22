@@ -141,7 +141,7 @@ const STICKER_PICKER_GROUPS = [
         <div style="font-size:0.94rem;line-height:1.5;">drink some water, take a breath, and remember you are loved ♡</div>
         <a
           class="soft-btn"
-          href="./anniversary-wrapper.html"
+          href="https://noturv0id.github.io/our-memories/anniversary-wrapper.html"
           target="_blank"
           style="justify-self:start;text-decoration:none;display:inline-flex;align-items:center;"
         >
