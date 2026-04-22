@@ -429,8 +429,19 @@
         margin: 0;
         font-size: 1rem;
         line-height: 1.95;
-        white-space: pre-wrap;
-        tab-size: 4;
+        overflow-wrap: anywhere;
+      }
+
+      .post-text.ql-editor {
+        padding: 0;
+      }
+
+      .post-text p {
+        margin: 0 0 0.75em;
+      }
+
+      .post-text p:last-child {
+        margin-bottom: 0;
       }
 
       .post-actions {
@@ -670,6 +681,48 @@
         justify-content: flex-end;
         gap: 10px;
         margin-top: 16px;
+      }
+
+      .entry-editor {
+        width: 100%;
+      }
+
+      .entry-fallback {
+        display: none;
+      }
+
+      #entryPopup .ql-toolbar.ql-snow {
+        border: 1px solid var(--border-2);
+        border-radius: 16px;
+        background: #fff;
+        padding: 10px;
+      }
+
+      #entryPopup .ql-container.ql-snow {
+        border: 1px solid var(--border-2);
+        border-radius: 16px;
+        background: #fff;
+        margin-top: 10px;
+      }
+
+      #entryPopup .ql-editor {
+        min-height: 140px;
+        font-family: 'Quicksand', sans-serif;
+        font-size: 1rem;
+        color: var(--text);
+      }
+
+      #entryPopup .ql-editor.ql-blank::before {
+        color: rgba(120, 112, 118, 0.7);
+        font-style: normal;
+      }
+
+      body.no-quill .entry-editor {
+        display: none;
+      }
+
+      body.no-quill .entry-fallback {
+        display: block;
       }
 
       #authPopup .popup-actions {

@@ -1,0 +1,404 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Open Website</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #fff7fb;
+        --card: rgba(255, 255, 255, 0.9);
+        --border: rgba(0, 0, 0, 0.08);
+        --text: #1f1f2a;
+        --muted: rgba(31, 31, 42, 0.72);
+        --btn: #ffffff;
+        --btn-border: rgba(0, 0, 0, 0.12);
+        --shadow: 0 14px 40px rgba(31, 31, 42, 0.12);
+        --radius: 18px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto,
+          Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+        color: var(--text);
+        background: radial-gradient(1200px 600px at 20% 10%, #ffe6f2 0%, transparent 55%),
+          radial-gradient(900px 500px at 80% 0%, #e8f3ff 0%, transparent 55%),
+          var(--bg);
+      }
+
+      .wrap {
+        max-width: 1100px;
+        margin: 22px auto;
+        padding: 0 16px 18px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(8px);
+      }
+
+      header.card {
+        padding: 16px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .title {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 700;
+        letter-spacing: 0.2px;
+      }
+
+      .hint {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.35;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr auto auto;
+        gap: 10px;
+      }
+
+      @media (max-width: 900px) {
+        .row {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 0.85rem;
+        color: var(--muted);
+      }
+
+      input {
+        width: 100%;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--text);
+        outline: none;
+      }
+
+      input:focus {
+        border-color: rgba(255, 102, 178, 0.55);
+        box-shadow: 0 0 0 4px rgba(255, 102, 178, 0.15);
+      }
+
+      .btn {
+        padding: 10px 14px;
+        border-radius: 999px;
+        border: 1px solid var(--btn-border);
+        background: var(--btn);
+        color: var(--text);
+        cursor: pointer;
+        font-weight: 600;
+        align-self: end;
+      }
+
+      .btn:active {
+        transform: translateY(1px);
+      }
+
+      .status {
+        padding: 0 16px 14px;
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .frame.card {
+        height: calc(100vh - 190px);
+        min-height: 520px;
+        overflow: hidden;
+      }
+
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+        background: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="card">
+        <div class="title">
+          <h1>Website viewer</h1>
+          <button class="btn" id="openNewTabBtn" type="button">Open in new tab</button>
+        </div>
+        <p class="hint">
+          If you want to host a full static website in Supabase Storage, make the bucket public and point to its
+          entry file (usually <code>index.html</code>).
+        </p>
+
+        <div class="row">
+          <label>
+            Supabase URL
+            <input id="supabaseUrlInput" placeholder="https://YOUR-PROJECT.supabase.co" />
+          </label>
+          <label>
+            Bucket
+            <input id="bucketInput" placeholder="anniversary" />
+          </label>
+          <label>
+            Object path
+            <input id="pathInput" placeholder="index.html (or folder/index.html)" />
+          </label>
+          <button class="btn" id="loadBtn" type="button">Load</button>
+          <button class="btn" id="saveBtn" type="button">Save</button>
+        </div>
+      </header>
+
+      <div class="card status" id="status"></div>
+
+      <section class="card frame">
+        <iframe id="siteFrame" title="Website preview"></iframe>
+      </section>
+    </div>
+
+    <script>
+      // You can also pass:
+      // - `?url=https://...` (direct URL)
+      // - OR `?supabaseUrl=...&bucket=...&path=...`
+      // Values are saved to localStorage when you click "Save".
+
+      const storageKey = "our-memories:embeddedSite";
+
+      const params = new URLSearchParams(location.search);
+      const statusEl = document.getElementById("status");
+      const frameEl = document.getElementById("siteFrame");
+      const openNewTabBtn = document.getElementById("openNewTabBtn");
+      const loadBtn = document.getElementById("loadBtn");
+      const saveBtn = document.getElementById("saveBtn");
+      const supabaseUrlInput = document.getElementById("supabaseUrlInput");
+      const bucketInput = document.getElementById("bucketInput");
+      const pathInput = document.getElementById("pathInput");
+
+      function encodePath(path) {
+        return String(path)
+          .split("/")
+          .filter(Boolean)
+          .map((seg) => encodeURIComponent(seg))
+          .join("/");
+      }
+
+      function buildPublicUrl({ supabaseUrl, bucket, path }) {
+        const base = String(supabaseUrl || "").replace(/\/+$/, "");
+        if (!base) return "";
+        if (!bucket || !path) return "";
+        return `${base}/storage/v1/object/public/${encodeURIComponent(bucket)}/${encodePath(path)}`;
+      }
+
+      function getConfigFromInputs() {
+        return {
+          supabaseUrl: supabaseUrlInput.value.trim(),
+          bucket: bucketInput.value.trim(),
+          path: pathInput.value.trim(),
+          url: ""
+        };
+      }
+
+      function getConfig() {
+        const fromStorage = (() => {
+          try {
+            const raw = localStorage.getItem(storageKey);
+            return raw ? JSON.parse(raw) : null;
+          } catch {
+            return null;
+          }
+        })();
+
+        const cfg = {
+          supabaseUrl:
+            params.get("supabaseUrl") ||
+            (fromStorage && fromStorage.supabaseUrl) ||
+            "https://ytrbsxknhlsfqkqphlms.supabase.co",
+          bucket: params.get("bucket") || (fromStorage && fromStorage.bucket) || "anniversary",
+          path: params.get("path") || (fromStorage && fromStorage.path) || "index.html",
+          url: params.get("url") || (fromStorage && fromStorage.url) || ""
+        };
+
+        return cfg;
+      }
+
+      function setInputs(cfg) {
+        supabaseUrlInput.value = cfg.supabaseUrl || "";
+        bucketInput.value = cfg.bucket || "";
+        pathInput.value = cfg.path || "";
+      }
+
+      function resolveUrl(cfg) {
+        if (cfg.url && /^https?:\/\//i.test(cfg.url)) return cfg.url;
+        return buildPublicUrl(cfg);
+      }
+
+      let renderedTabUrl = "";
+      let scriptObjectUrls = [];
+
+      function setStatus(text) {
+        statusEl.textContent = text;
+      }
+
+      function getAssetBaseUrl(url) {
+        return url.slice(0, url.lastIndexOf("/") + 1);
+      }
+
+      function addBaseHref(html, url) {
+        const baseTag = `<base href="${getAssetBaseUrl(url)}">`;
+        if (/<head[\s>]/i.test(html)) {
+          return html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
+        }
+        return `${baseTag}${html}`;
+      }
+
+      function patchNavigationScript(script) {
+        return script.replaceAll(
+          "window.location.assign(getStoryPath())",
+          'window.parent.postMessage({ type: "our-memories:navigate", path: getStoryPath() }, "*")'
+        );
+      }
+
+      function clearScriptObjectUrls() {
+        scriptObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+        scriptObjectUrls = [];
+      }
+
+      async function inlinePatchedScripts(html, pageUrl) {
+        clearScriptObjectUrls();
+
+        const scriptTagPattern = /<script\b([^>]*)\bsrc=["']([^"']+\.js[^"']*)["']([^>]*)><\/script>/gi;
+        const replacements = [];
+
+        for (const match of html.matchAll(scriptTagPattern)) {
+          const sourceUrl = new URL(match[2], pageUrl).href;
+          const response = await fetch(sourceUrl, { cache: "no-store" });
+          if (!response.ok) continue;
+
+          const patchedScript = patchNavigationScript(await response.text());
+          const blob = new Blob([patchedScript], { type: "text/javascript" });
+          const blobUrl = URL.createObjectURL(blob);
+          scriptObjectUrls.push(blobUrl);
+          const closingScriptTag = "<" + "/script>";
+
+          replacements.push({
+            from: match[0],
+            to: `<script${match[1]} src="${blobUrl}"${match[3]}>${closingScriptTag}`
+          });
+        }
+
+        return replacements.reduce(
+          (updatedHtml, replacement) => updatedHtml.replace(replacement.from, replacement.to),
+          html
+        );
+      }
+
+      async function prepareHtml(html, url) {
+        return inlinePatchedScripts(addBaseHref(html, url), url);
+      }
+
+      function setRenderedTabUrl(html) {
+        if (renderedTabUrl) URL.revokeObjectURL(renderedTabUrl);
+        const blob = new Blob([html], { type: "text/html" });
+        renderedTabUrl = URL.createObjectURL(blob);
+        openNewTabBtn.dataset.url = renderedTabUrl;
+      }
+
+      async function load(cfg) {
+        const url = resolveUrl(cfg);
+        if (!url) {
+          setStatus("Missing URL. Enter Supabase URL + bucket + path, or use ?url=...");
+          frameEl.removeAttribute("src");
+          frameEl.removeAttribute("srcdoc");
+          openNewTabBtn.dataset.url = "";
+          openNewTabBtn.dataset.sourceUrl = "";
+          return;
+        }
+
+        setStatus(`Loading: ${url}`);
+        openNewTabBtn.dataset.url = url;
+        openNewTabBtn.dataset.sourceUrl = url;
+
+        try {
+          const response = await fetch(url, { cache: "no-store" });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+          const html = await prepareHtml(await response.text(), url);
+          frameEl.removeAttribute("src");
+          frameEl.srcdoc = html;
+          setRenderedTabUrl(html);
+          setStatus(`Rendered: ${url}`);
+        } catch (error) {
+          console.error(error);
+          frameEl.removeAttribute("srcdoc");
+          frameEl.src = url;
+          openNewTabBtn.dataset.url = url;
+          openNewTabBtn.dataset.sourceUrl = url;
+          setStatus(`Could not fetch HTML directly, opened raw URL instead: ${url}`);
+        }
+      }
+
+      openNewTabBtn.addEventListener("click", () => {
+        const url = openNewTabBtn.dataset.url;
+        if (!url) return;
+        window.open(url, "_blank", "noopener,noreferrer");
+      });
+
+      loadBtn.addEventListener("click", () => {
+        load(getConfigFromInputs());
+      });
+
+      window.addEventListener("message", (event) => {
+        if (event.data?.type !== "our-memories:navigate") return;
+
+        const currentUrl = openNewTabBtn.dataset.sourceUrl || resolveUrl(getConfigFromInputs());
+        const nextUrl = new URL(event.data.path, getAssetBaseUrl(currentUrl)).href;
+        load({ url: nextUrl });
+      });
+
+      saveBtn.addEventListener("click", () => {
+        const cfg = getConfigFromInputs();
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(cfg));
+          setStatus("Saved. Click Load (or just refresh).");
+        } catch {
+          setStatus("Could not save settings (localStorage blocked).");
+        }
+      });
+
+      frameEl.addEventListener("load", () => {
+        const url = openNewTabBtn.dataset.sourceUrl || openNewTabBtn.dataset.url;
+        if (url) setStatus(`Loaded: ${url}`);
+      });
+
+      const initialCfg = getConfig();
+      setInputs(initialCfg);
+      load(initialCfg);
+    </script>
+  </body>
+</html>

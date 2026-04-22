@@ -141,7 +141,7 @@ const STICKER_PICKER_GROUPS = [
         <div style="font-size:0.94rem;line-height:1.5;">drink some water, take a breath, and remember you are loved ♡</div>
         <a
           class="soft-btn"
-          href="https://ytrbsxknhlsfqkqphlms.supabase.co/storage/v1/object/public/anniversary/index.html"
+          href="./anniversary-wrapper.html"
           target="_blank"
           style="justify-self:start;text-decoration:none;display:inline-flex;align-items:center;"
         >
@@ -166,47 +166,152 @@ const STICKER_PICKER_GROUPS = [
       let placedStickers = [];
       let activeSticker = null;
       let dragWidget = null;
-      let currentCommentsPostId = null;
-      let replyingToCommentId = null;
-      let editingWidgetId = null;
-      let editingPostId = null;
-      let pendingWidgetDrag = null;
-      let commentLikesEnabled = true;
-      let currentUser = null;
+       let currentCommentsPostId = null;
+       let replyingToCommentId = null;
+       let editingWidgetId = null;
+       let editingPostId = null;
+       let pendingWidgetDrag = null;
+       let commentLikesEnabled = true;
+       let currentUser = null;
+       let entryQuill = null;
 
-      const floatingDecorEl = document.getElementById('floatingDecor');
-      const leftZone = document.getElementById('leftZone');
-      const rightZone = document.getElementById('rightZone');
-      const timelineEl = document.getElementById('timeline');
+       const floatingDecorEl = document.getElementById('floatingDecor');
+       const leftZone = document.getElementById('leftZone');
+       const rightZone = document.getElementById('rightZone');
+       const timelineEl = document.getElementById('timeline');
       const stickerPopup = document.getElementById('stickerPopup');
       const stickerTabs = document.getElementById('stickerTabs');
       const stickerInput = document.getElementById('stickerInput');
       const emojiPickerGrid = document.getElementById('emojiPickerGrid');
       const saveStickerBtn = document.getElementById('saveStickerBtn');
       const closeStickerPopup = document.getElementById('closeStickerPopup');
-      const newEntryBtn = document.getElementById('newEntryBtn');
-      const entryPopup = document.getElementById('entryPopup');
-      const entryPopupTitle = entryPopup?.querySelector('.popup-title');
-      const entryPopupLabel = entryPopup?.querySelector('.popup-label');
-      const closeEntryPopup = document.getElementById('closeEntryPopup');
-      const entryContentInput = document.getElementById('entryContentInput');
-      const saveEntryBtn = document.getElementById('saveEntryBtn');
-      const commentsPopup = document.getElementById('commentsPopup');
-      const closeCommentsPopup = document.getElementById('closeCommentsPopup');
-      const commentsList = document.getElementById('commentsList');
-      const commentInput = document.getElementById('commentInput');
+       const newEntryBtn = document.getElementById('newEntryBtn');
+       const entryPopup = document.getElementById('entryPopup');
+       const entryPopupTitle = entryPopup?.querySelector('.popup-title');
+       const entryPopupLabel = entryPopup?.querySelector('.popup-label');
+       const closeEntryPopup = document.getElementById('closeEntryPopup');
+       const entryEditor = document.getElementById('entryEditor');
+       const entryContentFallback = document.getElementById('entryContentFallback');
+       const saveEntryBtn = document.getElementById('saveEntryBtn');
+       const commentsPopup = document.getElementById('commentsPopup');
+       const closeCommentsPopup = document.getElementById('closeCommentsPopup');
+       const commentsList = document.getElementById('commentsList');
+       const commentInput = document.getElementById('commentInput');
       const saveCommentBtn = document.getElementById('saveCommentBtn');
       const replyingToLabel = document.getElementById('replyingToLabel');
       const widgetPopup = document.getElementById('widgetPopup');
       const closeWidgetPopup = document.getElementById('closeWidgetPopup');
       const widgetPopupTitle = document.getElementById('widgetPopupTitle');
-      const widgetEditorFields = document.getElementById('widgetEditorFields');
-      const saveWidgetBtn = document.getElementById('saveWidgetBtn');
+       const widgetEditorFields = document.getElementById('widgetEditorFields');
+       const saveWidgetBtn = document.getElementById('saveWidgetBtn');
 
-      function renderDecor() {
-        floatingDecorEl.innerHTML = '';
-        floatingDecor.forEach((item) => {
-          const node = document.createElement('div');
+       function escapeHtml(value) {
+         return String(value || '')
+           .replaceAll('&', '&amp;')
+           .replaceAll('<', '&lt;')
+           .replaceAll('>', '&gt;')
+           .replaceAll('"', '&quot;')
+           .replaceAll("'", '&#39;');
+       }
+
+       function looksLikeHtml(value) {
+         return /<\/?[a-z][\s>]/i.test(String(value || ''));
+       }
+
+       function sanitizePostHtml(html) {
+         if (window.DOMPurify?.sanitize) {
+           return window.DOMPurify.sanitize(String(html || ''), {
+             USE_PROFILES: { html: true },
+             ADD_ATTR: ['style', 'class', 'target', 'rel'],
+             FORBID_TAGS: ['style', 'script']
+           });
+         }
+
+         return String(html || '');
+       }
+
+       function toSafeHtmlFromPlainText(text) {
+         return sanitizePostHtml(escapeHtml(text).replaceAll('\n', '<br>'));
+       }
+
+       function getPostDisplayHtml(content) {
+         const value = String(content || '');
+         if (!value) return '';
+         return looksLikeHtml(value) ? sanitizePostHtml(value) : toSafeHtmlFromPlainText(value);
+       }
+
+       function htmlToPlainText(html) {
+         const container = document.createElement('div');
+         container.innerHTML = sanitizePostHtml(html);
+         return (container.textContent || '').replace(/\u00a0/g, ' ');
+       }
+
+       function initEntryEditor() {
+         if (!entryEditor) return;
+
+         if (!window.Quill || !window.DOMPurify?.sanitize) {
+           document.body.classList.add('no-quill');
+           entryQuill = null;
+           return;
+         }
+
+         document.body.classList.remove('no-quill');
+
+         entryQuill = new window.Quill(entryEditor, {
+           theme: 'snow',
+           placeholder: 'write something ♡',
+           modules: {
+             toolbar: [
+               [{ font: [] }],
+               [{ size: ['small', false, 'large', 'huge'] }],
+               ['bold', 'italic', 'underline', 'strike'],
+               [{ color: [] }, { background: [] }],
+               [{ script: 'sub' }, { script: 'super' }],
+               [{ header: 1 }, { header: 2 }, 'blockquote', 'code-block'],
+               [{ list: 'ordered' }, { list: 'bullet' }],
+               [{ indent: '-1' }, { indent: '+1' }],
+               [{ direction: 'rtl' }, { align: [] }],
+               ['link'],
+               ['clean']
+             ]
+           }
+         });
+       }
+
+       function clearEntryComposer() {
+         if (entryQuill) {
+           entryQuill.setContents([]);
+           return;
+         }
+
+         if (entryContentFallback) entryContentFallback.value = '';
+       }
+
+       function focusEntryComposerToEnd() {
+         if (entryQuill) {
+           entryQuill.focus();
+           entryQuill.setSelection(entryQuill.getLength(), 0);
+           return;
+         }
+
+         if (entryContentFallback) entryContentFallback.focus();
+       }
+
+       function setEntryComposerFromStoredContent(content) {
+         const html = getPostDisplayHtml(content);
+
+         if (entryQuill) {
+           entryQuill.clipboard.dangerouslyPasteHTML(html || '');
+           return;
+         }
+
+         if (entryContentFallback) entryContentFallback.value = htmlToPlainText(html);
+       }
+
+       function renderDecor() {
+         floatingDecorEl.innerHTML = '';
+         floatingDecor.forEach((item) => {
+           const node = document.createElement('div');
           node.className = 'decor';
           node.textContent = item.icon;
           node.style.top = item.top;
@@ -773,17 +878,17 @@ async function saveWidgetToSupabase(widget) {
 function renderTimeline() {
   timelineEl.innerHTML = '';
 
-  if (!posts.length) {
-    timelineEl.innerHTML = `
-      <article class="post">
-        <div class="post-header"> </div>
-        <div class="post-body">
-          <p class="post-text"> </p>
-        </div>
-      </article>
-    `;
-    return;
-  }
+   if (!posts.length) {
+     timelineEl.innerHTML = `
+       <article class="post">
+         <div class="post-header"> </div>
+         <div class="post-body">
+          <div class="post-text ql-editor"> </div>
+         </div>
+       </article>
+     `;
+     return;
+   }
 
   posts.forEach((post) => {
     const avatarHtml = post.avatarUrl
@@ -807,8 +912,8 @@ function renderTimeline() {
             <span class="post-author-name">${post.nickname || post.author}</span>
             <span>${post.author}</span>
           </div>
-        </div>
-        <p class="post-text"></p>
+       </div>
+        <div class="post-text ql-editor"></div>
         <div class="post-actions">
           <button class="post-btn like-btn" type="button" data-post-id="${post.id}">
             ${post.likedByMe ? '🩷 liked' : '♡ like'} (${post.likesCount || 0})
@@ -823,7 +928,12 @@ function renderTimeline() {
       </div>
     `;
 
-    postEl.querySelector('.post-text').textContent = post.text;
+    const postTextEl = postEl.querySelector('.post-text');
+    postTextEl.innerHTML = getPostDisplayHtml(post.text);
+    postTextEl.querySelectorAll('a').forEach((link) => {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    });
 
     const postBody = postEl.querySelector('.post-body');
 
@@ -1225,7 +1335,7 @@ if (stickerTabs) {
       newEntryBtn.addEventListener('click', () => {
         resetEntryPopup();
         entryPopup.classList.add('open');
-        entryContentInput.focus();
+        focusEntryComposerToEnd();
       });
 
       closeEntryPopup.addEventListener('click', () => {
@@ -1424,7 +1534,7 @@ function resetEntryPopup() {
   if (entryPopupTitle) entryPopupTitle.textContent = 'new entry ♡';
   if (entryPopupLabel) entryPopupLabel.textContent = 'write something ♡';
   if (saveEntryBtn) saveEntryBtn.textContent = 'post';
-  entryContentInput.value = '';
+  clearEntryComposer();
 }
 
 function openEntryEditor(postId) {
@@ -1435,10 +1545,9 @@ function openEntryEditor(postId) {
   if (entryPopupTitle) entryPopupTitle.textContent = 'edit entry ♡';
   if (entryPopupLabel) entryPopupLabel.textContent = 'change your words ♡';
   if (saveEntryBtn) saveEntryBtn.textContent = 'save';
-  entryContentInput.value = post.text || '';
+  setEntryComposerFromStoredContent(post.text || '');
   entryPopup.classList.add('open');
-  entryContentInput.focus();
-  entryContentInput.setSelectionRange(entryContentInput.value.length, entryContentInput.value.length);
+  focusEntryComposerToEnd();
 }
 
 function setCurrentUser(user) {
@@ -1989,9 +2098,18 @@ async function loadPosts() {
 }
 
 async function saveEntry() {
-  const content = entryContentInput.value.trim();
+  let content = '';
+  let plainText = '';
 
-  if (!content) {
+  if (entryQuill) {
+    plainText = entryQuill.getText().trim();
+    content = sanitizePostHtml(entryQuill.root?.innerHTML || '');
+  } else {
+    plainText = String(entryContentFallback?.value || '').trim();
+    content = toSafeHtmlFromPlainText(plainText);
+  }
+
+  if (!plainText) {
     showMessage('write something first ♡');
     return;
   }
@@ -2392,7 +2510,7 @@ if (logoutBtn) logoutBtn.addEventListener('click', logoutUser);
 if (saveEntryBtn) saveEntryBtn.addEventListener('click', saveEntry);
 if (saveCommentBtn) saveCommentBtn.addEventListener('click', saveComment);
 
+initEntryEditor();
 renderDecor();
 renderTimeline();
 checkSession();
-
