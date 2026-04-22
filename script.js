@@ -440,7 +440,7 @@ const STICKER_PICKER_GROUPS = [
          if (entryContentFallback) entryContentFallback.value = htmlToPlainText(html);
        }
 
-       function renderDecor() {
+      function renderDecor() {
          floatingDecorEl.innerHTML = '';
        floatingDecor.forEach((item) => {
          const node = document.createElement('div');
@@ -466,6 +466,22 @@ const STICKER_PICKER_GROUPS = [
           floatingDecorEl.appendChild(node);
         });
       }
+
+      function getWishlistItemsInDisplayOrder(items = []) {
+  return [...items]
+    .map((item, index) => ({
+      ...item,
+      order: Number.isFinite(item?.order) ? item.order : index
+    }))
+    .sort((a, b) => a.order - b.order);
+}
+
+function getNextWishlistOrder(items = []) {
+  return items.reduce((maxOrder, item, index) => {
+    const itemOrder = Number.isFinite(item?.order) ? item.order : index;
+    return Math.max(maxOrder, itemOrder);
+  }, -1) + 1;
+}
 
       function getWidgetContent(widget) {
   const normalizedId = String(widget.id || '').toLowerCase().trim();
@@ -547,7 +563,7 @@ if (isNoteWidget) {
 }
 
 if (normalizedId === 'wishlist' || normalizedTitle.includes('wishlist')) {
-  const items = widget.data?.items || [];
+  const items = getWishlistItemsInDisplayOrder(widget.data?.items || []);
 
   if (!items.length) {
     return `<div style="font-size:0.92rem;opacity:0.75;">nothing on the wishlist yet ⋆˙⟡</div>`;
@@ -564,9 +580,9 @@ if (normalizedId === 'wishlist' || normalizedTitle.includes('wishlist')) {
       >
         ${item.done ? '☑' : '☐'}
       </button>
-      <span class="widget-wish-text${item.done ? ' is-done' : ''}">
+      <div class="widget-wish-text${item.done ? ' is-done' : ''}">
         ${item.text}
-      </span>
+      </div>
     </div>
   `).join('');
 
@@ -634,6 +650,8 @@ async function loadWidgets(options = {}) {
   }
 
   if (data && data.length) {
+    const widgetsNeedingWishlistNormalization = [];
+
     widgets = widgets.map((defaultWidget) => {
       const savedWidget = data.find((row) => row.id === defaultWidget.id);
 
@@ -641,7 +659,7 @@ async function loadWidgets(options = {}) {
         return defaultWidget;
       }
 
-      return {
+      const mergedWidget = {
         ...defaultWidget,
         title: savedWidget.title ?? defaultWidget.title,
         side: savedWidget.side ?? defaultWidget.side,
@@ -650,7 +668,38 @@ async function loadWidgets(options = {}) {
         data: savedWidget.data ?? defaultWidget.data,
         content: savedWidget.content ?? defaultWidget.content
       };
+
+      const normalizedId = String(mergedWidget.id || '').toLowerCase().trim();
+      const normalizedTitle = String(mergedWidget.title || '').toLowerCase();
+      const isWishlistWidget =
+        normalizedId === 'wishlist' || normalizedTitle.includes('wishlist');
+
+      if (isWishlistWidget && Array.isArray(mergedWidget.data?.items)) {
+        const normalizedItems = getWishlistItemsInDisplayOrder(mergedWidget.data.items).map((item, index) => ({
+          ...item,
+          order: Number.isFinite(item?.order) ? item.order : index
+        }));
+
+        const wishlistChanged = normalizedItems.some((item, index) => {
+          const originalItem = mergedWidget.data.items[index];
+          return !originalItem || item.order !== originalItem.order;
+        });
+
+        if (wishlistChanged) {
+          mergedWidget.data = {
+            ...mergedWidget.data,
+            items: normalizedItems
+          };
+          widgetsNeedingWishlistNormalization.push(mergedWidget);
+        }
+      }
+
+      return mergedWidget;
     });
+
+    for (const widget of widgetsNeedingWishlistNormalization) {
+      await saveWidgetToSupabase(widget);
+    }
   }
 
   if (render) {
@@ -972,7 +1021,7 @@ function openWidgetEditor(widgetId) {
       });
     });
   } else if (normalizedId === 'wishlist') {
-    const items = widget.data?.items || [];
+    const items = getWishlistItemsInDisplayOrder(widget.data?.items || []);
 
     widgetPopupTitle.textContent = 'wishlist ♡';
     saveWidgetBtn.style.display = 'none';
@@ -1022,7 +1071,8 @@ function openWidgetEditor(widgetId) {
         widget.data.items.push({
           id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
           text,
-          done: false
+          done: false,
+          order: (getWishlistItemsInDisplayOrder(widget.data.items)[0]?.order ?? 0) - 1
         });
 
         await saveWidgetToSupabase(widget);
@@ -1049,9 +1099,10 @@ function openWidgetEditor(widgetId) {
       btn.addEventListener('click', async () => {
         const wishId = btn.dataset.wishId;
 
+        // Toggle done state; if item becomes done, remove it so it disappears from the list
         widget.data.items = (widget.data.items || []).map((item) =>
           item.id === wishId ? { ...item, done: !item.done } : item
-        );
+        ).filter((item) => !item.done);
 
         await saveWidgetToSupabase(widget);
         renderWidgets();
@@ -1152,12 +1203,18 @@ async function toggleWidgetWishlistItem(widgetId, wishId) {
 
   if (!widget?.data?.items?.length) return;
 
-  widget.data.items = widget.data.items.map((item) =>
-    item.id === wishId ? { ...item, done: !item.done } : item
-  );
+  widget.data.items = getWishlistItemsInDisplayOrder(widget.data.items).map((item, index) => ({
+    ...item,
+    order: Number.isFinite(item?.order) ? item.order : index,
+    done: item.id === wishId ? !item.done : item.done
+  })).filter((item) => !item.done);
 
   await saveWidgetToSupabase(widget);
   renderWidgets();
+  // if the wishlist editor is open, refresh it so the editor list matches the widget
+  if (widgetPopup?.classList.contains('open') && editingWidgetId === 'wishlist') {
+    openWidgetEditor('wishlist');
+  }
 }
 
 function formatEntryDate(dateString) {
