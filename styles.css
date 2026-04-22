@@ -55,10 +55,17 @@
         overflow-x: hidden;
       }
 
+      body.app-booting .popup.open,
+      body.app-booting .message {
+        opacity: 0;
+        visibility: hidden;
+      }
+
       .page {
         position: relative;
         min-height: 100vh;
         padding: 32px;
+        transition: opacity 0.28s ease, visibility 0.28s ease;
       }
 
       .floating-decor {
@@ -115,6 +122,83 @@
         grid-template-columns: 1fr auto 1fr;
         align-items: center;
         gap: 24px;
+      }
+
+      .toolbar-live {
+        display: grid;
+      }
+
+      .toolbar-skeleton {
+        display: none;
+      }
+
+      .toolbar[data-auth-state='logged-out'],
+      .toolbar[data-auth-state='checking'] {
+        pointer-events: none;
+      }
+
+      .toolbar[data-auth-state='logged-out'] .toolbar-live,
+      .toolbar[data-auth-state='checking'] .toolbar-live {
+        display: none;
+      }
+
+      .toolbar[data-auth-state='logged-out'] .toolbar-skeleton,
+      .toolbar[data-auth-state='checking'] .toolbar-skeleton {
+        display: grid;
+      }
+
+      .toolbar[data-auth-state='logged-in'] .toolbar-live {
+        display: grid;
+      }
+
+      .toolbar[data-auth-state='logged-in'] .toolbar-skeleton {
+        display: none;
+      }
+
+      .toolbar-skeleton-brand,
+      .toolbar-skeleton-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .toolbar-skeleton-brand {
+        justify-self: start;
+      }
+
+      .toolbar-skeleton-actions {
+        justify-self: end;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .toolbar-skeleton-icon {
+        width: 24px;
+        height: 24px;
+      }
+
+      .toolbar-skeleton-title {
+        width: 168px;
+        height: 16px;
+      }
+
+      .toolbar-skeleton-quote {
+        width: min(300px, 100%);
+        height: 40px;
+        border-radius: 999px;
+        justify-self: center;
+      }
+
+      .toolbar-skeleton-btn {
+        width: 104px;
+      }
+
+      .toolbar-skeleton-btn-inbox {
+        width: 92px;
+      }
+
+      .toolbar-skeleton-btn-toggle {
+        width: 116px;
       }
 
       .brand,
@@ -215,6 +299,14 @@
         margin: 0;
         font-size: 1rem;
         font-family: 'Fredoka', sans-serif;
+      }
+
+      .notifications-panel-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
       }
 
       .notifications-mark-btn {
@@ -1267,6 +1359,7 @@
         justify-content: center;
         background: rgba(255, 244, 249, 0.58);
         z-index: 20;
+        transition: opacity 0.28s ease, visibility 0.28s ease;
       }
 
       .popup.open {
@@ -1693,6 +1786,7 @@
         display: none;
         font-family: 'Fredoka', sans-serif;
         color: var(--text);
+        transition: opacity 0.28s ease, visibility 0.28s ease;
       }
 
       .message.show {
@@ -1802,7 +1896,9 @@
         }
 
         .brand,
-        .toolbar-actions {
+        .toolbar-actions,
+        .toolbar-skeleton-brand,
+        .toolbar-skeleton-actions {
           justify-self: center;
           flex-wrap: wrap;
           justify-content: center;

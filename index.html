@@ -24,12 +24,12 @@
     <link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet" />
     <link rel="stylesheet" href="./styles.css?v=20260422-19" />
   </head>
-  <body>
+  <body class="app-booting">
     <div class="page">
       <div class="floating-decor" id="floatingDecor"></div>
 
-      <header class="toolbar">
-        <div class="toolbar-inner">
+      <header class="toolbar" id="appToolbar" data-auth-state="checking">
+        <div class="toolbar-inner toolbar-live">
           <div class="brand">
             <div class="brand-icons"><span>🎀</span><span>✦</span><span>♡</span></div>
             <div class="site-title">our memories ♡</div>
@@ -53,7 +53,10 @@
               <div class="notifications-panel" id="notificationsPanel" hidden>
                 <div class="notifications-panel-header">
                   <h3 class="notifications-title">inbox ♡</h3>
-                  <button class="notifications-mark-btn" id="markAllReadBtn" type="button">mark all read</button>
+                  <div class="notifications-panel-actions">
+                    <button class="notifications-mark-btn" id="markAllReadBtn" type="button">mark all read</button>
+                    <button class="notifications-mark-btn" id="clearNotificationsBtn" type="button">clear notifications</button>
+                  </div>
                 </div>
                 <div class="notifications-list" id="notificationsList"></div>
               </div>
@@ -72,6 +75,19 @@
             </button>
             <button class="soft-btn" type="button" id="newEntryBtn">new entry</button>
             <button class="soft-btn" type="button" id="profileBtn">profile</button>
+          </div>
+        </div>
+        <div class="toolbar-inner toolbar-skeleton" aria-hidden="true">
+          <div class="toolbar-skeleton-brand">
+            <span class="skeleton-avatar toolbar-skeleton-icon"></span>
+            <span class="skeleton-line toolbar-skeleton-title"></span>
+          </div>
+          <span class="skeleton-block toolbar-skeleton-quote"></span>
+          <div class="toolbar-skeleton-actions">
+            <span class="skeleton-button toolbar-skeleton-btn toolbar-skeleton-btn-inbox"></span>
+            <span class="skeleton-button toolbar-skeleton-btn toolbar-skeleton-btn-toggle"></span>
+            <span class="skeleton-button toolbar-skeleton-btn"></span>
+            <span class="skeleton-button toolbar-skeleton-btn"></span>
           </div>
         </div>
       </header>

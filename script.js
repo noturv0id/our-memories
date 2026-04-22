@@ -198,12 +198,14 @@ const STICKER_PICKER_GROUPS = [
       const saveStickerBtn = document.getElementById('saveStickerBtn');
       const closeStickerPopup = document.getElementById('closeStickerPopup');
        const newEntryBtn = document.getElementById('newEntryBtn');
+      const appToolbar = document.getElementById('appToolbar');
       const notificationsMenu = document.getElementById('notificationsMenu');
       const notificationsBtn = document.getElementById('notificationsBtn');
       const notificationsBadge = document.getElementById('notificationsBadge');
       const notificationsPanel = document.getElementById('notificationsPanel');
       const notificationsList = document.getElementById('notificationsList');
       const markAllReadBtn = document.getElementById('markAllReadBtn');
+      const clearNotificationsBtn = document.getElementById('clearNotificationsBtn');
        const themeToggle = document.getElementById('themeToggle');
        const entryPopup = document.getElementById('entryPopup');
        const entryPopupTitle = entryPopup?.querySelector('.popup-title');
@@ -611,7 +613,8 @@ function upgradeLegacyAnniversaryLinks(root = document) {
   });
 }
 
-async function loadWidgets() {
+async function loadWidgets(options = {}) {
+  const { render = true } = options;
   const { data, error } = await supabaseClient
     .from('widgets')
     .select('*');
@@ -642,7 +645,9 @@ async function loadWidgets() {
     });
   }
 
-  renderWidgets();
+  if (render) {
+    renderWidgets();
+  }
 }
 
 function renderWidgets() {
@@ -759,12 +764,33 @@ function renderWidgets() {
 }
 
 function renderWidgetSkeletons() {
-  const skeletons = [
-    { side: 'left', x: 0, y: 12, lines: 3 },
-    { side: 'left', x: 0, y: 225, lines: 2 },
-    { side: 'right', x: 12, y: 46, lines: 2 },
-    { side: 'right', x: 4, y: 258, lines: 3 }
-  ];
+  const skeletons = widgets.map((widget) => {
+    const normalizedId = String(widget.id || '').toLowerCase().trim();
+    const normalizedTitle = String(widget.title || '').toLowerCase();
+
+    let lines = 2;
+
+    if (normalizedId === 'song') {
+      lines = 3;
+    } else if (normalizedId === 'love') {
+      lines = 2;
+    } else if (
+      normalizedId.includes('wishlist') ||
+      normalizedTitle.includes('wishlist') ||
+      normalizedId.includes('stickers') ||
+      normalizedTitle.includes('stickers') ||
+      normalizedTitle.includes('important dates')
+    ) {
+      lines = 3;
+    }
+
+    return {
+      side: widget.side,
+      x: widget.x ?? 0,
+      y: widget.y ?? 0,
+      lines
+    };
+  });
 
   leftZone.innerHTML = '';
   rightZone.innerHTML = '';
@@ -1854,6 +1880,22 @@ function openEntryEditor(postId) {
 
 function setCurrentUser(user) {
   currentUser = user || null;
+  if (appToolbar) {
+    appToolbar.dataset.authState = currentUser ? 'logged-in' : 'logged-out';
+  }
+  if (!currentUser) {
+    closeNotificationsPanel();
+  }
+}
+
+function setToolbarAuthState(state) {
+  if (appToolbar) {
+    appToolbar.dataset.authState = state;
+  }
+}
+
+function setAppBootingState(isBooting) {
+  document.body.classList.toggle('app-booting', isBooting);
 }
 
 function getNotificationsSeenStorageKey() {
@@ -1881,6 +1923,47 @@ function setNotificationsSeenAt(value) {
   } catch (error) {
     console.error(error);
   }
+}
+
+function getNotificationsClearedStorageKey() {
+  const userId = currentProfile?.id || currentUser?.id;
+  return userId ? `notificationsClearedAt:${userId}` : '';
+}
+
+function getNotificationsClearedAt() {
+  const key = getNotificationsClearedStorageKey();
+  if (!key) return '';
+
+  try {
+    return localStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+}
+
+function setNotificationsClearedAt(value) {
+  const key = getNotificationsClearedStorageKey();
+  if (!key) return;
+
+  try {
+    if (value) {
+      localStorage.setItem(key, value);
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function getVisibleNotifications() {
+  const clearedAt = getNotificationsClearedAt();
+  const clearedTimestamp = clearedAt ? new Date(clearedAt).getTime() : 0;
+
+  return notifications.filter((item) => {
+    const createdAt = new Date(item.created_at).getTime();
+    return !clearedTimestamp || createdAt > clearedTimestamp;
+  });
 }
 
 function formatNotificationRelativeTime(dateString) {
@@ -1918,18 +2001,32 @@ function closeNotificationsPanel() {
 }
 
 function markNotificationsRead() {
-  if (!notifications.length) {
+  const visibleNotifications = getVisibleNotifications();
+  if (!visibleNotifications.length) {
     renderNotifications();
     return;
   }
 
-  const latestCreatedAt = notifications[0]?.created_at || new Date().toISOString();
+  const latestCreatedAt = visibleNotifications[0]?.created_at || new Date().toISOString();
+  setNotificationsSeenAt(latestCreatedAt);
+  renderNotifications();
+}
+
+function clearNotifications() {
+  const visibleNotifications = getVisibleNotifications();
+  if (!visibleNotifications.length) {
+    renderNotifications();
+    return;
+  }
+
+  const latestCreatedAt = visibleNotifications[0]?.created_at || new Date().toISOString();
+  setNotificationsClearedAt(latestCreatedAt);
   setNotificationsSeenAt(latestCreatedAt);
   renderNotifications();
 }
 
 function openNotificationsPanel() {
-  if (!notificationsPanel || !notificationsBtn) return;
+  if (!currentUser || !notificationsPanel || !notificationsBtn) return;
   notificationsPanel.hidden = false;
   notificationsBtn.setAttribute('aria-expanded', 'true');
   markNotificationsRead();
@@ -1953,9 +2050,10 @@ function focusPost(postId, options = {}) {
 function renderNotifications() {
   if (!notificationsList || !notificationsBtn || !notificationsBadge) return;
 
+  const visibleNotifications = getVisibleNotifications();
   const seenAt = getNotificationsSeenAt();
   const seenTimestamp = seenAt ? new Date(seenAt).getTime() : 0;
-  const unreadCount = notifications.filter((item) => {
+  const unreadCount = visibleNotifications.filter((item) => {
     const createdAt = new Date(item.created_at).getTime();
     return createdAt > seenTimestamp;
   }).length;
@@ -1963,12 +2061,12 @@ function renderNotifications() {
   notificationsBadge.hidden = unreadCount === 0;
   notificationsBadge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
 
-  if (!notifications.length) {
+  if (!visibleNotifications.length) {
     notificationsList.innerHTML = `<div class="notification-empty">no little updates yet ♡</div>`;
     return;
   }
 
-  notificationsList.innerHTML = notifications
+  notificationsList.innerHTML = visibleNotifications
     .map((item) => {
       const createdAt = new Date(item.created_at).getTime();
       const isUnread = createdAt > seenTimestamp;
@@ -2004,10 +2102,19 @@ function renderNotifications() {
   });
 }
 
-function buildNotifications({ postsData = [], commentsData = [], likesData = [], stickersData = [], profilesData = [] }) {
+function buildNotifications({
+  postsData = [],
+  commentsData = [],
+  likesData = [],
+  stickersData = [],
+  profilesData = [],
+  render = true
+}) {
   if (!currentProfile?.id) {
     notifications = [];
-    renderNotifications();
+    if (render) {
+      renderNotifications();
+    }
     return;
   }
 
@@ -2101,7 +2208,9 @@ function buildNotifications({ postsData = [], commentsData = [], likesData = [],
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
-  renderNotifications();
+  if (render) {
+    renderNotifications();
+  }
 }
 
 let popupPointerStartedInsideCard = false;
@@ -2148,13 +2257,22 @@ async function refreshUserData(options = {}) {
     renderWidgetSkeletons();
   }
 
-  const tasks = [loadPosts(), loadUserStickers()];
+  const tasks = [
+    loadPosts({ render: false }),
+    loadUserStickers({ render: false })
+  ];
 
   if (includeWidgets) {
-    tasks.push(loadWidgets());
+    tasks.push(loadWidgets({ render: false }));
   }
 
   await Promise.all(tasks);
+  renderTimeline();
+  renderStickerGrid();
+  renderNotifications();
+  if (includeWidgets) {
+    renderWidgets();
+  }
 }
 
 profileBtn.addEventListener('click', () => {
@@ -2229,12 +2347,15 @@ async function loadProfile(user) {
   return data;
 }
 
-async function loadUserStickers() {
+async function loadUserStickers(options = {}) {
+  const { render = true } = options;
   const user = await getCurrentUser();
 
   if (!user) {
     personalStickers = [];
-    renderStickerGrid();
+    if (render) {
+      renderStickerGrid();
+    }
     return;
   }
 
@@ -2251,7 +2372,9 @@ async function loadUserStickers() {
   }
 
   personalStickers = data || [];
-  renderStickerGrid();
+  if (render) {
+    renderStickerGrid();
+  }
 }
 
 async function loadPlacedStickers() {
@@ -2375,10 +2498,12 @@ async function signUpUser() {
   }
 
   if (data.user) {
-    setCurrentUser(data.user);
+    currentUser = data.user;
+    setToolbarAuthState('checking');
     await ensureProfile(data.user);
     await loadProfile(data.user);
     await refreshUserData({ includeWidgets: true });
+    setCurrentUser(data.user);
   }
 
   showMessage('account created ♡');
@@ -2401,9 +2526,11 @@ async function loginUser() {
   }
 
   if (data.user) {
-    setCurrentUser(data.user);
+    currentUser = data.user;
+    setToolbarAuthState('checking');
     await loadProfile(data.user);
     await refreshUserData({ includeWidgets: true });
+    setCurrentUser(data.user);
   }
 
   showMessage('hi again hehe ♡');
@@ -2495,7 +2622,8 @@ async function saveProfile() {
   showMessage('updated! <3');
 }
 
-async function loadPosts() {
+async function loadPosts(options = {}) {
+  const { render = true } = options;
   const editedPostIds = new Set(getEditedPostIds());
   const [
     { data: postsData, error: postsError },
@@ -2674,10 +2802,13 @@ async function loadPosts() {
     commentsData: commentsData || [],
     likesData: likesData || [],
     stickersData: stickersData || [],
-    profilesData: profilesData || []
+    profilesData: profilesData || [],
+    render
   });
 
-  renderTimeline();
+  if (render) {
+    renderTimeline();
+  }
 }
 
 async function saveEntry() {
@@ -3083,10 +3214,12 @@ async function checkSession() {
   } = await supabaseClient.auth.getSession();
 
   if (session?.user) {
-    setCurrentUser(session.user);
+    currentUser = session.user;
+    setToolbarAuthState('checking');
     authPopup.classList.remove('open');
     await loadProfile(session.user);
     await refreshUserData({ includeWidgets: true });
+    setCurrentUser(session.user);
   } else {
     setCurrentUser(null);
     authPopup.classList.add('open');
@@ -3105,7 +3238,7 @@ if (loginBtn) loginBtn.addEventListener('click', loginUser);
 if (notificationsBtn) {
   notificationsBtn.addEventListener('click', (event) => {
     event.stopPropagation();
-    if (!notificationsPanel) return;
+    if (!currentUser || !notificationsPanel) return;
 
     if (notificationsPanel.hidden) {
       openNotificationsPanel();
@@ -3118,6 +3251,12 @@ if (markAllReadBtn) {
   markAllReadBtn.addEventListener('click', (event) => {
     event.stopPropagation();
     markNotificationsRead();
+  });
+}
+if (clearNotificationsBtn) {
+  clearNotificationsBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
+    clearNotifications();
   });
 }
 if (passwordToggleBtn) {
@@ -3163,5 +3302,18 @@ document.addEventListener('click', (event) => {
 setTheme(document.documentElement.dataset.theme);
 initEntryEditor();
 renderDecor();
-renderTimeline();
-checkSession();
+renderTimelineSkeleton();
+renderWidgetSkeletons();
+renderNotifications();
+
+async function initApp() {
+  try {
+    await checkSession();
+  } finally {
+    requestAnimationFrame(() => {
+      setAppBootingState(false);
+    });
+  }
+}
+
+initApp();
