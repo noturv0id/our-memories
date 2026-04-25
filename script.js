@@ -115,9 +115,12 @@ const STICKER_PICKER_GROUPS = [
     x: 8,
     y: 20,
     data: {
-      title: " ",
-      subtitle: ' ',
-      note: ' '
+      spotifyUrl: '',
+      spotifyUri: '',
+      songName: '',
+      durationLabel: '',
+      coverUrl: '',
+      accent: 38
     }
   },
   {
@@ -202,7 +205,6 @@ const STICKER_PICKER_GROUPS = [
     y: 352,
     content: `
       <div style="display:grid;gap:12px;">
-        <div style="font-size:0.94rem;line-height:1.5;">remember you are loved</div>
          <a
            class="soft-btn widget-miss-you-btn"
            href="${ANNIVERSARY_WRAPPER_URL}"
@@ -235,7 +237,7 @@ const STICKER_PICKER_GROUPS = [
   // Duplicate of pinned photo widget on the right side
   {
     id: 'photo-pin-right',
-    title: '✦ pinned photo ♡ (copy)',
+    title: '✦ pinned photo ♡',
     side: 'right',
     x: 12,
     y: 760,
@@ -250,15 +252,130 @@ const STICKER_PICKER_GROUPS = [
     }
   },
 
-  {
-    id: '˖⁺‧₊stickers₊‧⁺˖',
-    title: '˖⁺‧₊my stickers₊‧⁺˖',
-    side: 'right',
-    x: 0,
-    y: 455,
-    content: `<div class="sticker-widget-body"><div class="sticker-grid" id="stickerGrid"></div><div class="sticker-widget-footer"><button class="soft-btn widget-miss-you-btn" id="openStickerPopup">+ add sticker</button></div></div>`,
-  },
 ];
+
+      function getWidgetDataObject(widget) {
+        if (widget?.data && typeof widget.data === 'object' && !Array.isArray(widget.data)) {
+          return widget.data;
+        }
+
+        return {};
+      }
+
+      function getWidgetMobileOrder(widget, fallbackOrder = 0) {
+        const mobileOrder = getWidgetDataObject(widget).mobileOrder;
+        return Number.isFinite(mobileOrder) ? mobileOrder : fallbackOrder;
+      }
+
+      function setWidgetMobileOrder(widget, order) {
+        widget.data = {
+          ...getWidgetDataObject(widget),
+          mobileOrder: order
+        };
+      }
+
+      function normalizeWidgetMobileOrders(widgetList = widgets) {
+        const sideOrders = {
+          left: new Set(),
+          right: new Set()
+        };
+
+        const needsReset = widgetList.some((widget) => {
+          const side = widget?.side === 'right' ? 'right' : 'left';
+          const mobileOrder = getWidgetDataObject(widget).mobileOrder;
+
+          if (!Number.isFinite(mobileOrder) || sideOrders[side].has(mobileOrder)) {
+            return true;
+          }
+
+          sideOrders[side].add(mobileOrder);
+          return false;
+        });
+
+        if (!needsReset) {
+          return [];
+        }
+
+        const sideCounts = {
+          left: 0,
+          right: 0
+        };
+        const changedWidgets = [];
+
+        widgetList.forEach((widget) => {
+          const side = widget?.side === 'right' ? 'right' : 'left';
+          const nextOrder = sideCounts[side];
+          sideCounts[side] += 1;
+
+          if (getWidgetMobileOrder(widget, -1) !== nextOrder) {
+            setWidgetMobileOrder(widget, nextOrder);
+            changedWidgets.push(widget);
+          }
+        });
+
+        return changedWidgets;
+      }
+
+      function getWidgetsForSideInMobileOrder(side) {
+        return [...widgets]
+          .filter((widget) => (widget?.side === 'right' ? 'right' : 'left') === side)
+          .sort((a, b) => {
+            const orderDifference =
+              getWidgetMobileOrder(a, 0) - getWidgetMobileOrder(b, 0);
+
+            if (orderDifference !== 0) {
+              return orderDifference;
+            }
+
+            return (a.zIndex || 0) - (b.zIndex || 0);
+          });
+      }
+
+      async function moveWidgetInMobileOrder(widgetId, direction) {
+        const widget = widgets.find((item) => item.id === widgetId);
+        if (!widget) return;
+
+        const side = widget.side === 'right' ? 'right' : 'left';
+        const orderedWidgets = getWidgetsForSideInMobileOrder(side);
+        const currentIndex = orderedWidgets.findIndex((item) => item.id === widgetId);
+        const targetIndex =
+          direction === 'up' ? currentIndex - 1 :
+          direction === 'down' ? currentIndex + 1 :
+          currentIndex;
+
+        if (currentIndex === -1 || targetIndex < 0 || targetIndex >= orderedWidgets.length) {
+          return;
+        }
+
+        [orderedWidgets[currentIndex], orderedWidgets[targetIndex]] =
+          [orderedWidgets[targetIndex], orderedWidgets[currentIndex]];
+
+        const changedWidgets = [];
+
+        orderedWidgets.forEach((item, index) => {
+          if (getWidgetMobileOrder(item, -1) !== index) {
+            setWidgetMobileOrder(item, index);
+            changedWidgets.push(item);
+          }
+        });
+
+        renderWidgets();
+
+        const saveResults = await Promise.all(
+          changedWidgets.map((item) =>
+            saveWidgetToSupabase(item, {
+              recordHistory: false,
+              suppressErrorMessage: true
+            })
+          )
+        );
+
+        if (saveResults.some((didSave) => !didSave)) {
+          showMessage('could not save widget order');
+        }
+      }
+
+      normalizeWidgetMobileOrders(widgets);
 
       let posts = [];
       let personalStickers = [];
@@ -270,7 +387,8 @@ let draggingPlacedSticker = null;
 let knownProfiles = [];
 const visibleGifStickerControlTimers = new Map();
 const minimizedWidgetIds = new Set();
-let allWidgetsMinimized = false;
+const previousMobileWidgetRects = new Map();
+let allWidgetsHidden = false;
 let missYouSaveInFlight = false;
 let missYouSaveQueued = false;
        let currentCommentsPostId = null;
@@ -285,17 +403,20 @@ let missYouSaveQueued = false;
 
        const floatingDecorEl = document.getElementById('floatingDecor');
        const leftZone = document.getElementById('leftZone');
-       const rightZone = document.getElementById('rightZone');
-       const timelineEl = document.getElementById('timeline');
+const rightZone = document.getElementById('rightZone');
+const timelineEl = document.getElementById('timeline');
+      const mobileViewSwitcher = document.getElementById('mobileViewSwitcher');
+      const mobileViewButtons = Array.from(document.querySelectorAll('[data-mobile-view]'));
       const stickerPopup = document.getElementById('stickerPopup');
       const stickerTabs = document.getElementById('stickerTabs');
       const stickerInput = document.getElementById('stickerInput');
+      const typedStickerPreviewWrap = document.getElementById('typedStickerPreviewWrap');
+      const typedStickerPreview = document.getElementById('typedStickerPreview');
       const emojiPickerGrid = document.getElementById('emojiPickerGrid');
       const gifPickerGrid = document.getElementById('gifPickerGrid');
       const gifSearchInput = document.getElementById('gifSearchInput');
       const gifSearchBtn = document.getElementById('gifSearchBtn');
        const gifSearchStatus = document.getElementById('gifSearchStatus');
-       const saveStickerBtn = document.getElementById('saveStickerBtn');
        const closeStickerPopup = document.getElementById('closeStickerPopup');
       const toggleWidgetsBtn = document.getElementById('toggleWidgetsBtn');
        const appToolbar = document.getElementById('appToolbar');
@@ -324,10 +445,77 @@ let missYouSaveQueued = false;
       const widgetPopup = document.getElementById('widgetPopup');
       const closeWidgetPopup = document.getElementById('closeWidgetPopup');
       const widgetPopupTitle = document.getElementById('widgetPopupTitle');
+      const headerSaveWidgetBtn = document.getElementById('headerSaveWidgetBtn');
        const widgetEditorFields = document.getElementById('widgetEditorFields');
        const saveWidgetBtn = document.getElementById('saveWidgetBtn');
-       const clearWidgetHistoryBtn = document.getElementById('clearWidgetHistoryBtn');
+      const clearWidgetHistoryBtn = document.getElementById('clearWidgetHistoryBtn');
       let lastScrollY = window.scrollY || 0;
+      const MOBILE_VIEW_STORAGE_KEY = 'ourMemoriesMobileView';
+      let activeMobileView = 'timeline';
+      let wasMobileLayoutActive = isMobileLayoutActive();
+
+      function setHeaderWidgetSaveVisibility(isVisible) {
+        if (!headerSaveWidgetBtn) return;
+        headerSaveWidgetBtn.hidden = !isVisible;
+        headerSaveWidgetBtn.style.display = isVisible ? 'inline-flex' : 'none';
+      }
+
+      function isMobileLayoutActive() {
+        return window.matchMedia('(max-width: 720px)').matches;
+      }
+
+      function syncMobileViewButtons() {
+        mobileViewButtons.forEach((button) => {
+          const isActive = button.dataset.mobileView === activeMobileView;
+          button.classList.toggle('active', isActive);
+          button.setAttribute('aria-pressed', String(isActive));
+        });
+      }
+
+      function applyMobileView() {
+        const pageEl = document.querySelector('.page');
+        if (!pageEl) return;
+
+        pageEl.dataset.mobileView = activeMobileView;
+        syncMobileViewButtons();
+      }
+
+      function setMobileView(nextView, options = {}) {
+        const { persist = true } = options;
+        const allowedViews = new Set(['timeline', 'left', 'right']);
+        activeMobileView = allowedViews.has(nextView) ? nextView : 'timeline';
+        applyMobileView();
+
+        if (!persist) return;
+
+        try {
+          localStorage.setItem(MOBILE_VIEW_STORAGE_KEY, activeMobileView);
+        } catch (error) {
+          console.error(error);
+        }
+      }
+
+      function syncMobileViewSwitcherVisibility() {
+        if (!mobileViewSwitcher) return;
+
+        const isMobile = isMobileLayoutActive();
+        const layoutChanged = isMobile !== wasMobileLayoutActive;
+        wasMobileLayoutActive = isMobile;
+        mobileViewSwitcher.hidden = !isMobile;
+
+        if (!isMobile) {
+          const pageEl = document.querySelector('.page');
+          if (pageEl) {
+            pageEl.dataset.mobileView = 'all';
+          }
+        } else {
+          applyMobileView();
+        }
+
+        if (layoutChanged && currentUser) {
+          renderWidgets();
+        }
+      }
 
        function setTheme(theme) {
          const nextTheme = theme === 'dark' ? 'dark' : 'light';
@@ -817,6 +1005,146 @@ function getTodayDateKey() {
   return `${year}-${month}-${day}`;
 }
 
+function formatDurationLabel(durationMs) {
+  const totalSeconds = Math.max(0, Math.round((Number(durationMs) || 0) / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = String(totalSeconds % 60).padStart(2, '0');
+  return `${minutes}:${seconds}`;
+}
+
+function getSongWidget() {
+  return widgets.find((widget) => String(widget.id || '').toLowerCase().trim() === 'song');
+}
+
+function normalizeSpotifyTrackUrl(value) {
+  const rawValue = String(value || '').trim();
+  if (!rawValue) return null;
+
+  const spotifyUriMatch = rawValue.match(/^spotify:track:([a-zA-Z0-9]+)$/i);
+  if (spotifyUriMatch) {
+    const trackId = spotifyUriMatch[1];
+    return {
+      trackId,
+      spotifyUrl: `https://open.spotify.com/track/${trackId}`,
+      spotifyUri: `spotify:track:${trackId}`
+    };
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(rawValue);
+  } catch (error) {
+    return null;
+  }
+
+  const hostname = parsedUrl.hostname.toLowerCase();
+  const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
+  const trackIndex = pathParts.findIndex((part) => part.toLowerCase() === 'track');
+
+  if (hostname === 'spotify.link') {
+    return {
+      trackId: '',
+      spotifyUrl: parsedUrl.toString(),
+      spotifyUri: ''
+    };
+  }
+
+  if (
+    hostname !== 'open.spotify.com' ||
+    trackIndex === -1 ||
+    !pathParts[trackIndex + 1]
+  ) {
+    return null;
+  }
+
+  const trackId = pathParts[trackIndex + 1];
+  return {
+    trackId,
+    spotifyUrl: `https://open.spotify.com/track/${trackId}`,
+    spotifyUri: `spotify:track:${trackId}`
+  };
+}
+
+function normalizeSongWidget(widget) {
+  if (!widget) return false;
+
+  const rawData = widget.data && typeof widget.data === 'object' ? widget.data : {};
+  let changed = widget.data !== rawData;
+  const normalizedTrack = normalizeSpotifyTrackUrl(rawData.spotifyUrl || rawData.note || '');
+  const accentValue = Number(rawData.accent);
+  const durationLabel =
+    typeof rawData.durationLabel === 'string' && rawData.durationLabel.trim()
+      ? rawData.durationLabel.trim()
+      : Number.isFinite(rawData.durationMs)
+        ? formatDurationLabel(rawData.durationMs)
+        : '';
+
+  const nextData = {
+    spotifyUrl: normalizedTrack?.spotifyUrl || (typeof rawData.spotifyUrl === 'string' ? rawData.spotifyUrl.trim() : ''),
+    spotifyUri: normalizedTrack?.spotifyUri || (typeof rawData.spotifyUri === 'string' ? rawData.spotifyUri.trim() : ''),
+    songName:
+      typeof rawData.songName === 'string' && rawData.songName.trim()
+        ? rawData.songName.trim()
+        : typeof rawData.title === 'string'
+          ? rawData.title.trim()
+          : '',
+    durationLabel,
+    coverUrl:
+      typeof rawData.coverUrl === 'string' && rawData.coverUrl.trim()
+        ? rawData.coverUrl.trim()
+        : typeof rawData.image === 'string'
+          ? rawData.image.trim()
+          : '',
+    accent: Math.max(6, Math.min(94, Number.isFinite(accentValue) ? accentValue : 38))
+  };
+
+  const keysToKeep = ['spotifyUrl', 'spotifyUri', 'songName', 'durationLabel', 'coverUrl', 'accent'];
+  const hasLegacyShape =
+    Object.keys(rawData).some((key) => !keysToKeep.includes(key)) ||
+    keysToKeep.some((key) => rawData[key] !== nextData[key]);
+
+  if (hasLegacyShape) {
+    changed = true;
+  }
+
+  widget.data = nextData;
+  return changed;
+}
+
+async function fetchSpotifyTrackCardData(value) {
+  const normalizedTrack = normalizeSpotifyTrackUrl(value);
+  if (!normalizedTrack) {
+    throw new Error('please paste a Spotify track link ♡');
+  }
+
+  const response = await fetch(
+    `https://open.spotify.com/oembed?url=${encodeURIComponent(normalizedTrack.spotifyUrl)}`
+  );
+
+  if (!response.ok) {
+    throw new Error('could not fetch this Spotify track ♡');
+  }
+
+  const data = await response.json();
+  const iframeUrl = String(data?.iframe_url || '');
+  const isTrackEmbed = iframeUrl.includes('/embed/track/');
+  const iframeTrackMatch = iframeUrl.match(/\/embed\/track\/([a-zA-Z0-9]+)/i);
+  const iframeTrackId = iframeTrackMatch?.[1] || normalizedTrack.trackId || '';
+
+  if (!isTrackEmbed) {
+    throw new Error('that link is not a Spotify track ♡');
+  }
+
+  return {
+    spotifyUrl: iframeTrackId ? `https://open.spotify.com/track/${iframeTrackId}` : normalizedTrack.spotifyUrl,
+    spotifyUri: iframeTrackId ? `spotify:track:${iframeTrackId}` : normalizedTrack.spotifyUri,
+    songName: String(data?.title || '').trim(),
+    coverUrl: String(data?.thumbnail_url || '').trim(),
+    durationLabel: '',
+    accent: 38
+  };
+}
+
 function normalizeMissYouWidget(widget) {
   if (!widget) return false;
 
@@ -985,9 +1313,38 @@ async function refreshWeatherWidget(options = {}) {
     normalizedId === 'dates' || normalizedTitle.includes('important dates');
 
   if (normalizedId === 'song') {
+    const songData = widget.data || {};
+    const songName = escapeHtml(songData.songName || 'drop a spotify track into the widget editor ♡');
+    const durationLabel = escapeHtml(songData.durationLabel || '--:--');
+    const spotifyUrl = escapeHtml(songData.spotifyUrl || '');
+    const coverUrl = escapeHtml(songData.coverUrl || '');
+    const accent = Math.max(6, Math.min(94, Number(songData.accent) || 38));
+
     return `
-      <p style="margin:0;font-size:0.96rem;font-weight:700;">${widget.data.title} — ${widget.data.subtitle}</p>
-      <p style="margin:10px 0 0;font-size:0.82rem;opacity:0.75;">“${widget.data.note}”</p>
+      <div class="song-widget-card${coverUrl ? ' has-cover' : ''}">
+        ${coverUrl
+          ? `<img class="song-widget-cover" src="${coverUrl}" alt="Spotify cover art" loading="lazy" />`
+          : '<div class="song-widget-art-placeholder">paste a Spotify track link to fill this card ♡</div>'}
+        <div class="song-widget-meta">
+          <div class="song-widget-name">${songName}</div>
+          <div class="song-widget-time">${durationLabel}</div>
+        </div>
+        <div class="song-widget-progress" aria-hidden="true">
+          <span style="width:${accent}%"></span>
+        </div>
+        <div class="song-widget-controls" aria-hidden="true">
+          <span class="song-widget-skip">⏮</span>
+          <span class="song-widget-play">⏸</span>
+          <span class="song-widget-skip">⏭</span>
+        </div>
+        <div class="song-widget-volume" aria-hidden="true">
+          <span class="song-widget-volume-icon">🔈</span>
+          <div class="song-widget-volume-bar"><span style="width:68%"></span></div>
+        </div>
+        ${spotifyUrl
+          ? `<a class="song-widget-link" href="${spotifyUrl}" target="_blank" rel="noreferrer noopener">open in spotify</a>`
+          : ''}
+      </div>
     `;
   }
 
@@ -1285,6 +1642,8 @@ async function loadWidgets(options = {}) {
         normalizedId === 'wishlist' || normalizedTitle.includes('wishlist');
       const isMissYouWidget =
         normalizedId === 'miss-you' || normalizedTitle.includes('miss you counter');
+      const isSweetReminderWidget = normalizedId === 'sweet-reminder';
+      const isSongWidget = normalizedId === 'song';
 
       if (isWishlistWidget && Array.isArray(mergedWidget.data?.items)) {
         const normalizedItems = getWishlistItemsInDisplayOrder(mergedWidget.data.items).map((item, index) => ({
@@ -1328,8 +1687,31 @@ async function loadWidgets(options = {}) {
         }
       }
 
+      if (isSongWidget && normalizeSongWidget(mergedWidget)) {
+        widgetsNeedingNormalization.push(mergedWidget);
+      }
+
+      if (isSweetReminderWidget) {
+        const reminderChanged =
+          mergedWidget.title !== defaultWidget.title ||
+          mergedWidget.content !== defaultWidget.content;
+
+        if (reminderChanged) {
+          mergedWidget.title = defaultWidget.title;
+          mergedWidget.content = defaultWidget.content;
+          widgetsNeedingNormalization.push(mergedWidget);
+        }
+      }
+
+      if (normalizedId === 'photo-pin-right' && mergedWidget.title !== defaultWidget.title) {
+        mergedWidget.title = defaultWidget.title;
+        widgetsNeedingNormalization.push(mergedWidget);
+      }
+
       return mergedWidget;
     });
+
+    widgetsNeedingNormalization.push(...normalizeWidgetMobileOrders(widgets));
 
     const uniqueWidgetsNeedingNormalization = widgetsNeedingNormalization.filter(
       (widget, index, array) => array.findIndex((item) => item.id === widget.id) === index
@@ -1346,14 +1728,49 @@ async function loadWidgets(options = {}) {
 }
 
 function renderWidgets() {
+  const shouldAnimateMobileReorder = isMobileLayoutActive();
+
+  previousMobileWidgetRects.clear();
+  if (shouldAnimateMobileReorder) {
+    document.querySelectorAll('.widget[data-widget-id]').forEach((widgetEl) => {
+      previousMobileWidgetRects.set(widgetEl.dataset.widgetId, widgetEl.getBoundingClientRect());
+    });
+  }
+
   leftZone.innerHTML = '';
   rightZone.innerHTML = '';
 
   ensureWidgetStackOrder();
   syncToggleWidgetsButton();
 
+  const isMobileWidgetOrderActive = isMobileLayoutActive();
+  const mobileWidgetOrderLookup = new Map();
+
+  if (isMobileWidgetOrderActive) {
+    ['left', 'right'].forEach((side) => {
+      const orderedWidgets = getWidgetsForSideInMobileOrder(side);
+      orderedWidgets.forEach((widget, index) => {
+        mobileWidgetOrderLookup.set(widget.id, {
+          index,
+          count: orderedWidgets.length
+        });
+      });
+    });
+  }
+
   [...widgets]
-    .sort((a, b) => (a.zIndex || 0) - (b.zIndex || 0))
+    .sort((a, b) => {
+      if (isMobileWidgetOrderActive) {
+        const orderDifference =
+          getWidgetMobileOrder(a, 0) - getWidgetMobileOrder(b, 0);
+
+        if (orderDifference !== 0) {
+          return orderDifference;
+        }
+      }
+
+      return (a.zIndex || 0) - (b.zIndex || 0);
+    })
     .forEach((widget) => {
     const normalizedId = String(widget.id || '').toLowerCase().trim();
     const normalizedTitle = String(widget.title || '').toLowerCase();
@@ -1370,7 +1787,7 @@ function renderWidgets() {
     const isStickerWidget =
       normalizedId.includes('stickers') || normalizedTitle.includes('stickers');
     const isPhotoWidget =
-      normalizedId === 'photo-pin' || normalizedTitle.includes('pinned photo');
+      normalizedId.startsWith('photo-pin') || normalizedTitle.includes('pinned photo');
 
     const hasHistory =
       normalizedId === 'song' ||
@@ -1386,17 +1803,27 @@ function renderWidgets() {
     const editTargetId =
       isDatesWidget ? 'dates' :
       isWishlistWidget ? 'wishlist' :
-      isPhotoWidget ? 'photo-pin' :
+      isPhotoWidget ? widget.id :
       isNoteWidget ? 'note' :
       normalizedId;
-    const isMinimized = allWidgetsMinimized || minimizedWidgetIds.has(widget.id);
+    const isMinimized = minimizedWidgetIds.has(widget.id);
+    const isHidden = allWidgetsHidden;
+    const mobileOrderState = mobileWidgetOrderLookup.get(widget.id);
+    const canMoveWidgetUp = Boolean(mobileOrderState && mobileOrderState.index > 0);
+    const canMoveWidgetDown = Boolean(
+      mobileOrderState && mobileOrderState.index < mobileOrderState.count - 1
+    );
 
     const el = document.createElement('div');
     el.className = 'widget';
     el.classList.toggle('is-minimized', isMinimized);
+    el.classList.toggle('is-hidden-all', isHidden);
     el.dataset.widgetId = widget.id;
     if (isStickerWidget) {
       el.classList.add('sticker-widget');
+    }
+    if (normalizedId === 'song') {
+      el.classList.add('song-widget');
     }
     if (isPhotoWidget) {
       el.classList.add('photo-widget');
@@ -1409,6 +1836,28 @@ function renderWidgets() {
       <div class="widget-bar" data-widget-id="${widget.id}">
         <span>${widget.title}</span>
         <div class="widget-bar-actions">
+          ${isMobileWidgetOrderActive ? `
+            <button
+              class="widget-order-btn"
+              type="button"
+              data-widget-move-id="${widget.id}"
+              data-widget-move-direction="up"
+              aria-label="move widget up"
+              ${canMoveWidgetUp ? '' : 'disabled'}
+            >
+              ↑
+            </button>
+            <button
+              class="widget-order-btn"
+              type="button"
+              data-widget-move-id="${widget.id}"
+              data-widget-move-direction="down"
+              aria-label="move widget down"
+              ${canMoveWidgetDown ? '' : 'disabled'}
+            >
+              ↓
+            </button>
+          ` : ''}
           <button
             class="widget-minimize-btn"
             type="button"
@@ -1432,6 +1881,30 @@ function renderWidgets() {
     const editBtn = el.querySelector('.widget-edit-btn');
     const historyBtn = el.querySelector('.widget-history-btn');
     const minimizeBtn = el.querySelector('.widget-minimize-btn');
+    const moveButtons = Array.from(el.querySelectorAll('.widget-order-btn'));
+
+    moveButtons.forEach((button) => {
+      ['mousedown', 'pointerdown'].forEach((eventName) => {
+        button.addEventListener(eventName, (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        });
+      });
+
+      button.addEventListener('click', async (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (button.disabled) {
+          return;
+        }
+
+        await moveWidgetInMobileOrder(
+          button.dataset.widgetMoveId || widget.id,
+          button.dataset.widgetMoveDirection
+        );
+      });
+    });
 
     if (minimizeBtn) {
       ['mousedown', 'pointerdown'].forEach((eventName) => {
@@ -1555,53 +2028,64 @@ function renderWidgets() {
     }
   });
 
+  if (shouldAnimateMobileReorder) {
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.widget[data-widget-id]').forEach((widgetEl) => {
+        const previousRect = previousMobileWidgetRects.get(widgetEl.dataset.widgetId);
+        if (!previousRect) return;
+
+        const nextRect = widgetEl.getBoundingClientRect();
+        const deltaX = previousRect.left - nextRect.left;
+        const deltaY = previousRect.top - nextRect.top;
+
+        if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1) {
+          return;
+        }
+
+        widgetEl.classList.add('widget-mobile-reordering');
+        widgetEl.style.transition = 'none';
+        widgetEl.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+
+        requestAnimationFrame(() => {
+          widgetEl.style.transition = '';
+          widgetEl.style.transform = '';
+        });
+      });
+
+      window.setTimeout(() => {
+        document.querySelectorAll('.widget.widget-mobile-reordering').forEach((widgetEl) => {
+          widgetEl.classList.remove('widget-mobile-reordering');
+        });
+      }, 420);
+    });
+  }
+
   renderStickerGrid();
 }
 
 function syncToggleWidgetsButton() {
   if (!toggleWidgetsBtn) return;
 
-  toggleWidgetsBtn.textContent = allWidgetsMinimized ? 'show all' : 'hide all';
-  toggleWidgetsBtn.setAttribute('aria-pressed', String(allWidgetsMinimized));
+  toggleWidgetsBtn.textContent = allWidgetsHidden ? 'show all' : 'hide all';
+  toggleWidgetsBtn.setAttribute('aria-pressed', String(allWidgetsHidden));
   toggleWidgetsBtn.setAttribute(
     'aria-label',
-    allWidgetsMinimized ? 'restore all widgets' : 'minimize all widgets'
+    allWidgetsHidden ? 'show all widgets' : 'hide all widgets'
   );
 }
 
 function toggleWidgetMinimized(widgetId) {
-  if (allWidgetsMinimized) {
-    allWidgetsMinimized = false;
-    minimizedWidgetIds.clear();
-    widgets.forEach((widget) => {
-      if (widget.id !== widgetId) {
-        minimizedWidgetIds.add(widget.id);
-      }
-    });
-    renderWidgets();
-    return;
-  }
-
   if (minimizedWidgetIds.has(widgetId)) {
     minimizedWidgetIds.delete(widgetId);
   } else {
     minimizedWidgetIds.add(widgetId);
   }
 
-  if (minimizedWidgetIds.size < widgets.length) {
-    allWidgetsMinimized = false;
-  }
-
   renderWidgets();
 }
 
 function toggleAllWidgetsMinimized() {
-  allWidgetsMinimized = !allWidgetsMinimized;
-
-  if (allWidgetsMinimized) {
-    minimizedWidgetIds.clear();
-  }
-
+  allWidgetsHidden = !allWidgetsHidden;
   renderWidgets();
 }
 
@@ -1680,30 +2164,103 @@ function openWidgetEditor(widgetId) {
   if (normalizedId === 'love') {
     widgetPopupTitle.textContent = "｡ ₊°༺ together for ༻°₊ ｡:";
     saveWidgetBtn.style.display = 'none';
+    setHeaderWidgetSaveVisibility(false);
 
     widgetEditorFields.innerHTML = `
       <div class="small-note">i hope i get forever with you, sweetie ᰔᩚ</div>
     `;
   } else if (normalizedId === 'song') {
+    normalizeSongWidget(widget);
     widgetPopupTitle.textContent = `edit ${widget.title}`;
-    saveWidgetBtn.style.display = 'inline-flex';
+    saveWidgetBtn.style.display = 'none';
+    setHeaderWidgetSaveVisibility(true);
 
     widgetEditorFields.innerHTML = `
-      <label class="popup-label">widget title</label>
-      <input class="popup-input" id="widgetFieldWidgetTitle" type="text" value="${widget.title || ''}" />
+      <div class="song-editor-layout">
+        <div class="song-editor-preview${widget.data?.coverUrl ? ' has-cover' : ''}" id="songEditorPreview">
+          ${widget.data?.coverUrl
+            ? `<img class="song-editor-preview-cover" src="${escapeHtml(widget.data.coverUrl)}" alt="Spotify cover preview" />`
+            : '<div class="song-editor-preview-empty">cover preview will show here ♡</div>'}
+        </div>
 
-      <label class="popup-label" style="margin-top:12px;">song title</label>
-      <input class="popup-input" id="widgetFieldTitle" type="text" value="${widget.data?.title || ''}" />
+        <label class="popup-label">spotify track link</label>
+        <div class="song-editor-fetch-row">
+          <input
+            class="popup-input"
+            id="widgetFieldSpotifyUrl"
+            type="url"
+            placeholder="https://open.spotify.com/track/..."
+            value="${escapeHtml(widget.data?.spotifyUrl || '')}"
+          />
+          <button class="soft-btn" id="fetchSpotifySongBtn" type="button">fetch</button>
+        </div>
 
-      <label class="popup-label" style="margin-top:12px;">artist</label>
-      <input class="popup-input" id="widgetFieldSubtitle" type="text" value="${widget.data?.subtitle || ''}" />
+        <label class="popup-label" style="margin-top:12px;">caption</label>
+        <input
+          class="popup-input"
+          id="widgetFieldSongDuration"
+          type="text"
+          value="${escapeHtml(widget.data?.durationLabel || '')}"
+        />
 
-      <label class="popup-label" style="margin-top:12px;">little note</label>
-      <textarea class="popup-input" id="widgetFieldNote" rows="4" style="resize: vertical; min-height: 96px;">${widget.data?.note || ''}</textarea>
+        <input id="widgetFieldSongCover" type="hidden" value="${escapeHtml(widget.data?.coverUrl || '')}" />
+        <input id="widgetFieldSongUri" type="hidden" value="${escapeHtml(widget.data?.spotifyUri || '')}" />
+      </div>
     `;
+
+    const spotifyUrlInput = document.getElementById('widgetFieldSpotifyUrl');
+    const songDurationInput = document.getElementById('widgetFieldSongDuration');
+    const songCoverInput = document.getElementById('widgetFieldSongCover');
+    const songUriInput = document.getElementById('widgetFieldSongUri');
+    const fetchSpotifySongBtn = document.getElementById('fetchSpotifySongBtn');
+    const songEditorPreview = document.getElementById('songEditorPreview');
+
+    const renderSongEditorPreview = () => {
+      if (!songEditorPreview) return;
+
+      const coverUrl = String(songCoverInput?.value || '').trim();
+      songEditorPreview.classList.toggle('has-cover', Boolean(coverUrl));
+      songEditorPreview.innerHTML = coverUrl
+        ? `<img class="song-editor-preview-cover" src="${escapeHtml(coverUrl)}" alt="Spotify cover preview" />`
+        : '<div class="song-editor-preview-empty">cover preview will show here ♡</div>';
+    };
+
+    songCoverInput?.addEventListener('input', renderSongEditorPreview);
+
+    fetchSpotifySongBtn?.addEventListener('click', async () => {
+      const rawUrl = spotifyUrlInput?.value || '';
+
+      if (!rawUrl.trim()) {
+        showMessage('paste a Spotify track link first ♡');
+        return;
+      }
+
+      fetchSpotifySongBtn.disabled = true;
+      fetchSpotifySongBtn.textContent = 'fetching...';
+
+      try {
+        const spotifyData = await fetchSpotifyTrackCardData(rawUrl);
+        if (spotifyUrlInput) spotifyUrlInput.value = spotifyData.spotifyUrl;
+        if (songUriInput) songUriInput.value = spotifyData.spotifyUri;
+        if (songCoverInput) songCoverInput.value = spotifyData.coverUrl;
+        widget.data.songName = spotifyData.songName;
+        if (songDurationInput && !songDurationInput.value.trim()) {
+          songDurationInput.value = spotifyData.durationLabel;
+        }
+        renderSongEditorPreview();
+        showMessage('Spotify track loaded ♡');
+      } catch (error) {
+        console.error(error);
+        showMessage(error.message || 'could not fetch this Spotify track ♡');
+      } finally {
+        fetchSpotifySongBtn.disabled = false;
+        fetchSpotifySongBtn.textContent = 'fetch';
+      }
+    });
   } else if (normalizedId === 'note') {
     widgetPopupTitle.textContent = '⋆𐙚₊little note˚⊹♡';
     saveWidgetBtn.style.display = 'inline-flex';
+    setHeaderWidgetSaveVisibility(false);
 
     widgetEditorFields.innerHTML = `
       <label class="popup-label">little note</label>
@@ -1714,6 +2271,7 @@ function openWidgetEditor(widgetId) {
 
     widgetPopupTitle.textContent = 'important dates ♡';
     saveWidgetBtn.style.display = 'none';
+    setHeaderWidgetSaveVisibility(false);
 
     const itemsHtml = items.map((item) => `
       <div class="date-edit-item" data-date-id="${item.id}" style="border:1px solid var(--border);border-radius:16px;padding:12px;background:rgba(255,250,253,0.92);">
@@ -1791,6 +2349,7 @@ function openWidgetEditor(widgetId) {
 
     widgetPopupTitle.textContent = 'wishlist ♡';
     saveWidgetBtn.style.display = 'none';
+    setHeaderWidgetSaveVisibility(false);
 
     const itemsHtml = items.map((item) => `
       <div class="wishlist-item-row">
@@ -1875,13 +2434,15 @@ function openWidgetEditor(widgetId) {
         showMessage('wishlist updated ♡');
       });
     });
-  } else if (normalizedId === 'photo-pin') {
+  } else if (normalizedId.startsWith('photo-pin')) {
     if (!widget.data) {
       widget.data = {};
     }
 
-    widgetPopupTitle.textContent = 'pinned photo ♡';
+    widgetPopupTitle.textContent =
+      normalizedId === 'photo-pin-right' ? 'dodos pinned photo' : 'dodos pinned photo';
     saveWidgetBtn.style.display = 'none';
+    setHeaderWidgetSaveVisibility(false);
 
     const photoData = {
       image: widget.data.image || '',
@@ -2057,6 +2618,7 @@ function openWidgetEditor(widgetId) {
     widgetPopupTitle.textContent = `edit ${widget.title}`;
     widgetEditorFields.innerHTML = `<div class="small-note">this widget is not editable yet ♡</div>`;
     saveWidgetBtn.style.display = 'none';
+    setHeaderWidgetSaveVisibility(false);
   }
 
   widgetPopup.classList.add('open');
@@ -2084,10 +2646,22 @@ async function saveWidgetChanges() {
   });
 
   if (editingWidgetId === 'song') {
-    widget.title = document.getElementById('widgetFieldWidgetTitle').value.trim() || 'currently listening to ₊˚⊹ᰔ ';
-    widget.data.title = document.getElementById('widgetFieldTitle').value.trim();
-    widget.data.subtitle = document.getElementById('widgetFieldSubtitle').value.trim();
-    widget.data.note = document.getElementById('widgetFieldNote').value.trim();
+    if (!widget.data) widget.data = {};
+    widget.title = widget.title || 'currently listening to ₊˚⊹ᰔ ';
+    const rawSpotifyUrl = document.getElementById('widgetFieldSpotifyUrl')?.value.trim() || '';
+    const normalizedTrack = normalizeSpotifyTrackUrl(rawSpotifyUrl);
+    widget.data.spotifyUrl = normalizedTrack?.spotifyUrl || '';
+    widget.data.spotifyUri =
+      widget.data.spotifyUrl
+        ? (
+            document.getElementById('widgetFieldSongUri')?.value.trim() ||
+            normalizedTrack?.spotifyUri ||
+          ''
+          )
+        : '';
+    widget.data.durationLabel = document.getElementById('widgetFieldSongDuration')?.value.trim() || '';
+    widget.data.coverUrl = document.getElementById('widgetFieldSongCover')?.value.trim() || '';
+    widget.data.accent = Math.max(6, Math.min(94, Number(widget.data.accent) || 38));
   } else if (editingWidgetId === 'note') {
     if (!widget.data) widget.data = {};
     widget.data.text = document.getElementById('widgetFieldText').value.trim();
@@ -2279,6 +2853,14 @@ function renderTimeline() {
           <button class="post-btn comments-btn" type="button" data-post-id="${post.id}">
             comments (${post.comments?.length || 0})
           </button>
+          <button
+            class="post-btn stickers-btn"
+            type="button"
+            data-post-id="${post.id}"
+            aria-pressed="false"
+          >
+            stickers
+          </button>
           ${isOwner ? `<button class="post-btn edit-entry-btn" type="button" data-post-id="${post.id}">edit</button>` : ''}
           ${isOwner ? `<button class="post-btn delete-entry-btn" type="button" data-post-id="${post.id}">delete</button>` : ''}
         </div>
@@ -2360,6 +2942,15 @@ function renderTimeline() {
     });
   });
 
+  document.querySelectorAll('.stickers-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      stickerPopup.classList.add('open');
+      renderEmojiPicker();
+      renderGifPicker();
+      switchStickerTab('type');
+      stickerInput.focus();
+    });
+  });
   renderPlacedStickers();
 }
 
@@ -2419,11 +3010,8 @@ function switchStickerTab(nextTab) {
     gifPanel.classList.toggle('active', nextTab === 'gif');
   }
 
-  if (saveStickerBtn) {
-    saveStickerBtn.style.display = nextTab === 'type' ? 'inline-flex' : 'none';
-  }
-
   if (nextTab === 'type') {
+    renderTypedStickerPreview();
     stickerInput.focus();
   }
 
@@ -2578,6 +3166,21 @@ function renderGifPicker() {
   hasRenderedGifPicker = true;
 }
 
+function renderTypedStickerPreview() {
+  if (!typedStickerPreviewWrap || !typedStickerPreview) return;
+
+  const typedValue = String(stickerInput?.value || '').trim();
+  const hasValue = Boolean(typedValue);
+
+  typedStickerPreviewWrap.hidden = !hasValue;
+  typedStickerPreview.textContent = typedValue;
+  typedStickerPreview.setAttribute(
+    'aria-label',
+    hasValue ? `use typed sticker ${typedValue}` : 'typed sticker preview'
+  );
+  typedStickerPreview.classList.toggle('is-ready', hasValue);
+}
+
 async function searchPublicGifs() {
   if (!gifSearchInput) return;
 
@@ -2640,69 +3243,7 @@ async function searchPublicGifs() {
 }
 
       function renderStickerGrid() {
-        const grid = document.getElementById('stickerGrid');
-        if (!grid) return;
-
-        grid.innerHTML = '';
-        personalStickers.forEach((sticker) => {
-          const item = document.createElement('div');
-          item.className = 'sticker-grid-item';
-
-          const pill = document.createElement('button');
-          pill.className = 'sticker-pill';
-          pill.type = 'button';
-          pill.draggable = true;
-          if (isGifSticker(sticker.emoji)) {
-            pill.classList.add('has-media');
-          }
-          pill.appendChild(createStickerVisual(sticker.emoji, { forGrid: true }));
-          pill.title = 'drag onto a diary entry';
-
-          pill.addEventListener('dragstart', (event) => {
-            activeSticker = sticker.emoji;
-            activeStickerSize = isGifSticker(sticker.emoji) ? DEFAULT_GIF_STICKER_SIZE : null;
-            document.body.classList.add('sticker-dragging');
-
-            if (event.dataTransfer) {
-              event.dataTransfer.setData(STICKER_MIME_TYPE, sticker.emoji);
-              event.dataTransfer.setData('text/plain', sticker.emoji);
-              event.dataTransfer.effectAllowed = 'copy';
-              event.dataTransfer.dropEffect = 'copy';
-            }
-          });
-
-          pill.addEventListener('dragend', () => {
-            activeSticker = null;
-            activeStickerSize = null;
-            document.body.classList.remove('sticker-dragging');
-            document
-              .querySelectorAll('.post-body.sticker-drop-ready')
-              .forEach((node) => node.classList.remove('sticker-drop-ready'));
-          });
-
-          const deleteBtn = document.createElement('button');
-          deleteBtn.className = 'sticker-delete-btn';
-          deleteBtn.type = 'button';
-          deleteBtn.textContent = 'delete';
-          deleteBtn.addEventListener('click', async () => {
-            await deleteUserSticker(sticker.id);
-          });
-
-          item.appendChild(pill);
-          item.appendChild(deleteBtn);
-          grid.appendChild(item);
-        });
-
-        const openBtn = document.getElementById('openStickerPopup');
-        if (openBtn) {
-          openBtn.onclick = () => {
-            stickerPopup.classList.add('open');
-            renderEmojiPicker();
-            renderGifPicker();
-            switchStickerTab('type');
-            stickerInput.focus();
-          };
-        }
+        return;
       }
 
       async function handleStickerDrop(event, postId) {
@@ -2819,13 +3360,14 @@ function renderPlacedStickers() {
     el.appendChild(stickerVisual);
 
     if (currentProfile?.id === item.userId) {
+      const controlRow = document.createElement('div');
+      controlRow.className = 'sticker-control-row';
+
       stickerVisual.addEventListener('pointerdown', (event) => {
         if (event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
-        if (isGif) {
-          showGifStickerControls(item.id);
-        }
+        showGifStickerControls(item.id);
 
         const layerRect = layer.getBoundingClientRect();
         draggingPlacedSticker = {
@@ -2838,19 +3380,17 @@ function renderPlacedStickers() {
         };
 
         el.classList.add('is-dragging');
+        document.body.classList.add('sticker-repositioning');
         stickerVisual.setPointerCapture?.(event.pointerId);
       });
 
+      stickerVisual.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        showGifStickerControls(item.id);
+      });
+
       if (isGif) {
-        stickerVisual.addEventListener('click', (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          showGifStickerControls(item.id);
-        });
-
-        const controlRow = document.createElement('div');
-        controlRow.className = 'sticker-control-row';
-
         const resizeControls = document.createElement('div');
         resizeControls.className = 'sticker-size-controls';
 
@@ -2891,7 +3431,6 @@ function renderPlacedStickers() {
           await deletePlacedSticker(item.id);
         });
         controlRow.appendChild(undoBtn);
-        el.appendChild(controlRow);
       } else {
         const undoBtn = document.createElement('button');
         undoBtn.className = 'sticker-undo-btn';
@@ -2899,10 +3438,13 @@ function renderPlacedStickers() {
         undoBtn.textContent = 'undo';
         undoBtn.addEventListener('click', async (event) => {
           event.stopPropagation();
+          hideGifStickerControls(item.id);
           await deletePlacedSticker(item.id);
         });
-        el.appendChild(undoBtn);
+        controlRow.appendChild(undoBtn);
       }
+
+      el.appendChild(controlRow);
     }
 
     layer.appendChild(el);
@@ -2959,6 +3501,7 @@ function startWidgetDrag(event, widget, element) {
 
 window.addEventListener('pointermove', (event) => {
   if (draggingPlacedSticker) {
+    event.preventDefault();
     const { element, layerRect, stickerId, sticker } = draggingPlacedSticker;
     const isGif = isGifSticker(sticker.sticker);
     const stickerSize = isGif ? getPlacedGifSize(stickerId) : 32;
@@ -3000,10 +3543,17 @@ window.addEventListener('pointermove', (event) => {
   const nextX = originX + (event.clientX - startX);
   const nextY = originY + (event.clientY - startY);
 
-  const minX = pageRect.left - zoneRect.left + 8;
-  const maxX = pageRect.right - zoneRect.left - widgetWidth - 8;
-  const minY = pageRect.top - zoneRect.top + 8;
-  const maxY = pageRect.bottom - zoneRect.top - widgetHeight - 8;
+  const pageMidpoint = pageRect.left + (pageRect.width / 2);
+  const minX =
+    widget.side === 'left'
+      ? pageRect.left - zoneRect.left + 8
+      : pageMidpoint - zoneRect.left + 8;
+  const maxX =
+    widget.side === 'left'
+      ? pageMidpoint - zoneRect.left - widgetWidth - 8
+      : pageRect.right - zoneRect.left - widgetWidth - 8;
+  const minY = Math.max(pageRect.top - zoneRect.top + 8, 0);
+  const maxY = Math.max(minY, pageRect.bottom - zoneRect.top - widgetHeight - 8);
 
   widget.x = Math.max(minX, Math.min(maxX, nextX));
   widget.y = Math.max(minY, Math.min(maxY, nextY));
@@ -3016,6 +3566,7 @@ window.addEventListener('pointerup', async () => {
   if (draggingPlacedSticker) {
     const finishedStickerDrag = draggingPlacedSticker;
     draggingPlacedSticker = null;
+    document.body.classList.remove('sticker-repositioning');
 
     finishedStickerDrag.element.classList.remove('is-dragging');
 
@@ -3051,6 +3602,7 @@ window.addEventListener('pointerup', async () => {
   }
 
   document.body.classList.remove('dragging-widget');
+  document.body.classList.remove('sticker-repositioning');
 
   dragWidget = null;
   pendingWidgetDrag = null;
@@ -3059,55 +3611,15 @@ window.addEventListener('pointerup', async () => {
     await saveWidgetToSupabase(finishedDrag.widget);
   }
 });
-saveStickerBtn.addEventListener('click', async () => {
-  const activeStickerTab =
-    document.querySelector('.sticker-tab.active')?.dataset.stickerTab || 'type';
-  const value =
-    activeStickerTab === 'gif'
-      ? selectedGifStickerUrl
-      : stickerInput.value.trim();
-  if (!value) return;
 
-  const user = await getCurrentUser();
-
-  if (!user) {
-    showMessage('please log in first ♡');
-    return;
+window.addEventListener('pointercancel', () => {
+  if (draggingPlacedSticker?.element) {
+    draggingPlacedSticker.element.classList.remove('is-dragging');
   }
 
-  const { error } = await supabaseClient
-    .from('user_stickers')
-    .insert({
-  user_id: user.id,
-  emoji: value
+  draggingPlacedSticker = null;
+  document.body.classList.remove('sticker-repositioning');
 });
-
-  if (error) {
-    console.error(error);
-    showMessage(error.message);
-    return;
-  }
-
-  if (isGifSticker(value)) {
-    const gifItem =
-      gifSearchResults.find((item) => item.url === value) ||
-      STICKER_GIF_LIBRARY.find((item) => item.url === value) ||
-      { label: 'gif sticker', url: value };
-    saveRecentGifSticker(gifItem);
-  }
-
-  stickerInput.value = '';
-  selectedGifStickerUrl = '';
-  if (gifPickerGrid) {
-    gifPickerGrid.querySelectorAll('.gif-picker-card').forEach((card) => {
-      card.classList.remove('active');
-    });
-  }
-  stickerPopup.classList.remove('open');
-  await loadUserStickers();
-  showMessage('sticker saved ♡');
-});
-
 if (stickerTabs) {
   stickerTabs.addEventListener('click', (event) => {
     const button = event.target.closest('[data-sticker-tab]');
@@ -3128,14 +3640,69 @@ if (gifSearchInput) {
   });
 }
 
+if (stickerInput) {
+  stickerInput.addEventListener('input', () => {
+    renderTypedStickerPreview();
+  });
+}
+
+if (typedStickerPreview) {
+  typedStickerPreview.addEventListener('click', () => {
+    const typedValue = String(stickerInput?.value || '').trim();
+    if (!typedValue) return;
+    activeSticker = typedValue;
+    activeStickerSize = null;
+    typedStickerPreview.classList.add('is-active');
+    showMessage('drag it onto a diary entry ♡');
+  });
+
+  typedStickerPreview.addEventListener('dragstart', (event) => {
+    const typedValue = String(stickerInput?.value || '').trim();
+    if (!typedValue) {
+      event.preventDefault();
+      return;
+    }
+
+    activeSticker = typedValue;
+    activeStickerSize = null;
+    requestAnimationFrame(() => {
+      stickerPopup.classList.remove('open');
+    });
+    document.body.classList.add('sticker-dragging');
+
+    if (event.dataTransfer) {
+      event.dataTransfer.setData(STICKER_MIME_TYPE, typedValue);
+      event.dataTransfer.setData('text/plain', typedValue);
+      event.dataTransfer.effectAllowed = 'copy';
+      event.dataTransfer.dropEffect = 'copy';
+    }
+  });
+
+  typedStickerPreview.addEventListener('dragend', () => {
+    activeSticker = null;
+    activeStickerSize = null;
+    typedStickerPreview.classList.remove('is-active');
+    document.body.classList.remove('sticker-dragging');
+    document
+      .querySelectorAll('.post-body.sticker-drop-ready')
+      .forEach((node) => node.classList.remove('sticker-drop-ready'));
+  });
+}
+
       closeStickerPopup.addEventListener('click', () => {
         selectedGifStickerUrl = '';
+        if (typedStickerPreview) {
+          typedStickerPreview.classList.remove('is-active');
+        }
         stickerPopup.classList.remove('open');
       });
 
       stickerPopup.addEventListener('click', (event) => {
         if (event.target === stickerPopup && !popupPointerStartedInsideCard) {
           selectedGifStickerUrl = '';
+          if (typedStickerPreview) {
+            typedStickerPreview.classList.remove('is-active');
+          }
           stickerPopup.classList.remove('open');
         }
       });
@@ -3177,6 +3744,7 @@ if (gifSearchInput) {
       closeWidgetPopup.addEventListener('click', () => {
         widgetPopup.classList.remove('open');
         saveWidgetBtn.style.display = 'inline-flex';
+        setHeaderWidgetSaveVisibility(false);
         if (clearWidgetHistoryBtn) clearWidgetHistoryBtn.style.display = 'none';
       });
 
@@ -3184,6 +3752,7 @@ if (gifSearchInput) {
         if (event.target === widgetPopup && !popupPointerStartedInsideCard) {
           widgetPopup.classList.remove('open');
           saveWidgetBtn.style.display = 'inline-flex';
+          setHeaderWidgetSaveVisibility(false);
           if (clearWidgetHistoryBtn) clearWidgetHistoryBtn.style.display = 'none';
         }
       });
@@ -3197,6 +3766,9 @@ if (gifSearchInput) {
       });
 
       saveWidgetBtn.addEventListener('click', saveWidgetChanges);
+      if (headerSaveWidgetBtn) {
+        headerSaveWidgetBtn.addEventListener('click', saveWidgetChanges);
+      }
       if (clearWidgetHistoryBtn) {
         clearWidgetHistoryBtn.addEventListener('click', () => {
           const widgetId = clearWidgetHistoryBtn.dataset.clearWidgetHistoryId;
@@ -3288,7 +3860,7 @@ function summarizeWidgetHistory(widget) {
   const normalizedTitle = String(widget.title || '').toLowerCase();
 
   if (normalizedId === 'song') {
-    return `${widget.data?.title || 'untitled'} — ${widget.data?.subtitle || 'unknown artist'}\n${widget.data?.note || ''}`.trim();
+    return `${widget.data?.songName || 'untitled'}\n${widget.data?.durationLabel || ''}`.trim();
   }
 
   if (normalizedId === 'love') {
@@ -4871,7 +5443,13 @@ if (saveEntryBtn) saveEntryBtn.addEventListener('click', saveEntry);
 if (saveCommentBtn) saveCommentBtn.addEventListener('click', saveComment);
 if (toggleWidgetsBtn) toggleWidgetsBtn.addEventListener('click', toggleAllWidgetsMinimized);
 if (themeToggle) themeToggle.addEventListener('click', toggleTheme);
+mobileViewButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    setMobileView(button.dataset.mobileView || 'timeline');
+  });
+});
 window.addEventListener('scroll', updateFloatingEntryButtonVisibility, { passive: true });
+window.addEventListener('resize', syncMobileViewSwitcherVisibility, { passive: true });
 updateFloatingEntryButtonVisibility();
 document.addEventListener('click', (event) => {
   if (!notificationsMenu?.contains(event.target)) {
@@ -4890,6 +5468,14 @@ document.addEventListener('click', (event) => {
       }, true);
 
 setTheme(document.documentElement.dataset.theme);
+try {
+  activeMobileView = localStorage.getItem(MOBILE_VIEW_STORAGE_KEY) || 'timeline';
+} catch (error) {
+  console.error(error);
+  activeMobileView = 'timeline';
+}
+applyMobileView();
+syncMobileViewSwitcherVisibility();
 initEntryEditor();
 renderDecor();
 renderTimelineSkeleton();

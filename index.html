@@ -97,6 +97,18 @@
         </div>
       </header>
 
+      <div class="mobile-view-switcher" id="mobileViewSwitcher" hidden>
+        <button class="mobile-view-btn active" type="button" data-mobile-view="timeline" aria-pressed="true">
+          entries
+        </button>
+        <button class="mobile-view-btn" type="button" data-mobile-view="left" aria-pressed="false">
+          left side
+        </button>
+        <button class="mobile-view-btn" type="button" data-mobile-view="right" aria-pressed="false">
+          right side
+        </button>
+      </div>
+
       <main class="layout">
         <section class="widget-zone" id="leftZone"></section>
 
@@ -184,6 +196,7 @@
           <h3 class="popup-title" id="widgetPopupTitle">edit widget</h3>
           <div class="popup-header-actions">
             <button class="soft-btn widget-clear-history-btn" id="clearWidgetHistoryBtn" type="button">clear history</button>
+            <button class="soft-btn" id="headerSaveWidgetBtn" type="button" hidden>save</button>
             <button class="soft-btn" id="closeWidgetPopup" type="button">close</button>
           </div>
         </div>
@@ -201,7 +214,6 @@
         <div class="popup-header">
           <h3 class="popup-title">✦ sticker box ♡</h3>
           <div class="popup-header-actions">
-            <button class="soft-btn" id="saveStickerBtn" type="button">save</button>
             <button class="soft-btn" id="closeStickerPopup" type="button">close</button>
           </div>
         </div>
@@ -214,7 +226,12 @@
 
           <div class="sticker-panel active" id="stickerTypePanel">
           <label class="popup-label" for="stickerInput">add a little sticker ♡</label>
-          <input class="popup-input" id="stickerInput" maxlength="16" placeholder="" />
+          <div class="typed-sticker-input-wrap">
+            <input class="popup-input typed-sticker-input" id="stickerInput" maxlength="16" placeholder="" />
+            <div class="typed-sticker-preview-wrap" id="typedStickerPreviewWrap" hidden>
+              <button class="typed-sticker-preview" id="typedStickerPreview" type="button" draggable="true"></button>
+            </div>
+          </div>
           </div>
 
           <div class="sticker-panel" id="stickerPickPanel">
