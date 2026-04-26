@@ -117,7 +117,7 @@
         line-height: 1.5;
       }
 
-      .open-now {
+      .retry-btn {
         position: relative;
         z-index: 1;
         display: inline-flex;
@@ -133,6 +133,12 @@
         font-weight: 700;
         text-decoration: none;
         box-shadow: 0 12px 28px rgba(5, 2, 8, 0.24);
+        cursor: pointer;
+        font: inherit;
+      }
+
+      .retry-btn[hidden] {
+        display: none;
       }
 
       .loading-dots {
@@ -180,21 +186,208 @@
     <main>
       <p class="eyebrow">our memories</p>
       <h1>opening website</h1>
-      <p>Preparing the anniversary page...</p>
+      <p id="status">Preparing the anniversary page...</p>
       <div class="loading-dots" aria-hidden="true">
         <span></span>
         <span></span>
         <span></span>
       </div>
-      <a class="open-now" id="openNowLink" href="./toto%20%26%20dodo%20anniversary/index.html">open now</a>
+      <button class="retry-btn" id="retryBtn" type="button" hidden>try again</button>
     </main>
     <script>
-      const anniversaryUrl = new URL("./toto%20%26%20dodo%20anniversary/index.html", window.location.href);
-      document.getElementById("openNowLink").href = anniversaryUrl.href;
+      const params = new URLSearchParams(location.search);
+      const statusEl = document.getElementById("status");
+      const retryBtn = document.getElementById("retryBtn");
+      const wrapperUrl = location.href.split("#")[0].split("?")[0];
 
-      window.setTimeout(() => {
-        window.location.href = anniversaryUrl.href;
-      }, 1400);
+      const defaultConfig = {
+        supabaseUrl: "https://ytrbsxknhlsfqkqphlms.supabase.co",
+        bucket: "anniversary",
+        path: "index.html"
+      };
+
+      function setStatus(message) {
+        statusEl.textContent = message;
+      }
+
+      function encodePath(path) {
+        return String(path)
+          .split("/")
+          .filter(Boolean)
+          .map((segment) => encodeURIComponent(segment))
+          .join("/");
+      }
+
+      function buildPublicUrl(config) {
+        const base = String(config.supabaseUrl || "").replace(/\/+$/, "");
+        if (!base || !config.bucket || !config.path) return "";
+        return `${base}/storage/v1/object/public/${encodeURIComponent(config.bucket)}/${encodePath(config.path)}`;
+      }
+
+      function getConfig() {
+        return {
+          supabaseUrl: params.get("supabaseUrl") || defaultConfig.supabaseUrl,
+          bucket: params.get("bucket") || defaultConfig.bucket,
+          path: params.get("path") || defaultConfig.path,
+          url: params.get("url") || ""
+        };
+      }
+
+      function resolveUrl(config) {
+        if (config.url && /^https?:\/\//i.test(config.url)) return config.url;
+        return buildPublicUrl(config);
+      }
+
+      function getAssetBaseUrl(url) {
+        return url.slice(0, url.lastIndexOf("/") + 1);
+      }
+
+      function addBaseHref(html, url) {
+        const baseTag = `<base href="${getAssetBaseUrl(url)}">`;
+        if (/<head[\s>]/i.test(html)) {
+          return html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
+        }
+        return `${baseTag}${html}`;
+      }
+
+      function escapeInlineScript(script) {
+        return script.replace(/<\/script/gi, "<\\/script");
+      }
+
+      function escapeStyle(style) {
+        return style.replace(/<\/style/gi, "<\\/style");
+      }
+
+      function patchNavigationScript(script) {
+        return script.replaceAll(
+          "window.location.assign(getStoryPath())",
+          "window.__openWrappedPage(getStoryPath())"
+        );
+      }
+
+      function patchInlineNavigation(html) {
+        return html
+          .replaceAll("window.location.href = 'index.html';", "window.__openWrappedPage('index.html');")
+          .replaceAll('window.location.href = "index.html";', 'window.__openWrappedPage("index.html");');
+      }
+
+      function injectNavigationBridge(html, sourceUrl) {
+        const bridgeCode = `
+          window.__openWrappedPage = function (path) {
+            const nextUrl = new URL(path, ${JSON.stringify(getAssetBaseUrl(sourceUrl))}).href;
+            const launcherUrl = new URL(${JSON.stringify(wrapperUrl)});
+            launcherUrl.searchParams.set("url", nextUrl);
+            window.location.assign(launcherUrl.href);
+          };
+        `;
+        const closingScriptTag = "<" + "/script>";
+        const bridgeTag = `<script>${escapeInlineScript(bridgeCode)}${closingScriptTag}`;
+
+        if (/<head[\s>]/i.test(html)) {
+          return html.replace(/<head([^>]*)>/i, `<head$1>${bridgeTag}`);
+        }
+
+        return `${bridgeTag}${html}`;
+      }
+
+      async function inlinePatchedScripts(html, pageUrl) {
+        const pageOrigin = new URL(pageUrl).origin;
+        const scriptTagPattern = /<script\b([^>]*)\bsrc=["']([^"']+\.js[^"']*)["']([^>]*)>\s*<\/script>/gi;
+        const replacements = [];
+
+        for (const match of html.matchAll(scriptTagPattern)) {
+          const sourceUrl = new URL(match[2], pageUrl);
+          if (sourceUrl.origin !== pageOrigin) continue;
+
+          const response = await fetch(sourceUrl.href, { cache: "no-store" });
+          if (!response.ok) continue;
+
+          const attrs = `${match[1]}${match[3]}`.replace(/\s+(async|defer)\b/gi, "");
+          const patchedScript = patchNavigationScript(await response.text());
+          const closingScriptTag = "<" + "/script>";
+
+          replacements.push({
+            from: match[0],
+            to: `<script${attrs}>${escapeInlineScript(patchedScript)}${closingScriptTag}`
+          });
+        }
+
+        return replacements.reduce(
+          (updatedHtml, replacement) => updatedHtml.replace(replacement.from, replacement.to),
+          html
+        );
+      }
+
+      async function inlineStylesheets(html, pageUrl) {
+        const pageOrigin = new URL(pageUrl).origin;
+        const stylesheetPattern = /<link\b([^>]*)\brel=["']stylesheet["']([^>]*)\bhref=["']([^"']+)["']([^>]*)>/gi;
+        const alternateStylesheetPattern = /<link\b([^>]*)\bhref=["']([^"']+)["']([^>]*)\brel=["']stylesheet["']([^>]*)>/gi;
+        const replacements = [];
+
+        async function queueReplacement(match, href) {
+          const sourceUrl = new URL(href, pageUrl);
+          if (sourceUrl.origin !== pageOrigin) return;
+
+          const response = await fetch(sourceUrl.href, { cache: "no-store" });
+          if (!response.ok) return;
+
+          replacements.push({
+            from: match[0],
+            to: `<style>${escapeStyle(await response.text())}</style>`
+          });
+        }
+
+        for (const match of html.matchAll(stylesheetPattern)) {
+          await queueReplacement(match, match[3]);
+        }
+
+        for (const match of html.matchAll(alternateStylesheetPattern)) {
+          await queueReplacement(match, match[2]);
+        }
+
+        return replacements.reduce(
+          (updatedHtml, replacement) => updatedHtml.replace(replacement.from, replacement.to),
+          html
+        );
+      }
+
+      async function prepareHtml(html, url) {
+        let preparedHtml = html.replace(/^\uFEFF/, "");
+        preparedHtml = addBaseHref(preparedHtml, url);
+        preparedHtml = injectNavigationBridge(preparedHtml, url);
+        preparedHtml = patchInlineNavigation(preparedHtml);
+        preparedHtml = await inlineStylesheets(preparedHtml, url);
+        preparedHtml = await inlinePatchedScripts(preparedHtml, url);
+        return preparedHtml;
+      }
+
+      async function openWebsite() {
+        retryBtn.hidden = true;
+        setStatus("Preparing the anniversary page...");
+
+        try {
+          const url = resolveUrl(getConfig());
+          if (!url) throw new Error("Missing anniversary page URL.");
+
+          const response = await fetch(url, { cache: "no-store" });
+          if (!response.ok) {
+            throw new Error(`Could not open website (${response.status}).`);
+          }
+
+          setStatus("Opening website...");
+          const preparedHtml = await prepareHtml(await response.text(), url);
+          document.open();
+          document.write(preparedHtml);
+          document.close();
+        } catch (error) {
+          console.error(error);
+          setStatus("Could not open the anniversary page.");
+          retryBtn.hidden = false;
+        }
+      }
+
+      retryBtn.addEventListener("click", openWebsite);
+      openWebsite();
     </script>
   </body>
 </html>
