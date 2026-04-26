@@ -117,6 +117,24 @@
         line-height: 1.5;
       }
 
+      .open-now {
+        position: relative;
+        z-index: 1;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        margin-top: 22px;
+        padding: 0 20px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: rgba(55, 34, 52, 0.9);
+        color: var(--text);
+        font-weight: 700;
+        text-decoration: none;
+        box-shadow: 0 12px 28px rgba(5, 2, 8, 0.24);
+      }
+
       .loading-dots {
         position: relative;
         z-index: 1;
@@ -168,6 +186,15 @@
         <span></span>
         <span></span>
       </div>
+      <a class="open-now" id="openNowLink" href="./toto%20%26%20dodo%20anniversary/index.html">open now</a>
     </main>
+    <script>
+      const anniversaryUrl = new URL("./toto%20%26%20dodo%20anniversary/index.html", window.location.href);
+      document.getElementById("openNowLink").href = anniversaryUrl.href;
+
+      window.setTimeout(() => {
+        window.location.href = anniversaryUrl.href;
+      }, 1400);
+    </script>
   </body>
 </html>
