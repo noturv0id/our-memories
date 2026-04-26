@@ -30,6 +30,9 @@
     <link rel="stylesheet" href="./styles.css?v=20260424-26" />
   </head>
   <body class="app-booting">
+    <div class="launch-splash" id="launchSplash" aria-hidden="true">
+      <img class="launch-splash-image" src="./launching.jpeg" alt="" />
+    </div>
     <div class="page">
       <div class="floating-decor" id="floatingDecor"></div>
 
@@ -51,7 +54,7 @@
                 aria-label="open inbox"
                 aria-expanded="false"
               >
-                <span class="notifications-btn-icon" aria-hidden="true">💌</span>
+                <span class="notifications-btn-icon" aria-hidden="true">🕭</span>
                 <span class="notifications-btn-label">inbox</span>
                 <span class="notifications-badge" id="notificationsBadge" hidden>0</span>
               </button>
@@ -98,11 +101,11 @@
       </header>
 
       <div class="mobile-view-switcher" id="mobileViewSwitcher" hidden>
-        <button class="mobile-view-btn active" type="button" data-mobile-view="timeline" aria-pressed="true">
-          entries
-        </button>
         <button class="mobile-view-btn" type="button" data-mobile-view="left" aria-pressed="false">
           left side
+        </button>
+        <button class="mobile-view-btn active" type="button" data-mobile-view="timeline" aria-pressed="true">
+          entries
         </button>
         <button class="mobile-view-btn" type="button" data-mobile-view="right" aria-pressed="false">
           right side
@@ -149,15 +152,23 @@
       <div class="popup-card">
         <div class="popup-header">
           <h3 class="popup-title">new entry ✎</h3>
-          <button class="soft-btn" id="closeEntryPopup" type="button">close</button>
+          <div class="popup-header-actions">
+            <button class="soft-btn" id="saveEntryBtn" type="button">post</button>
+            <button class="soft-btn" id="closeEntryPopup" type="button">close</button>
+          </div>
         </div>
         <div class="popup-body">
           <label class="popup-label">write something ♡</label>
           <div class="entry-editor" id="entryEditor"></div>
           <textarea class="popup-input entry-fallback" id="entryContentFallback" rows="6" style="resize: vertical; min-height: 140px;"></textarea>
-    
-          <div class="popup-actions">
-            <button class="soft-btn" id="saveEntryBtn" type="button">post</button>
+          <div class="entry-attachment-fields">
+            <label class="popup-label" for="entryImageInput">attach image</label>
+            <div class="entry-image-box">
+              <input class="popup-input" id="entryImageInput" type="file" accept="image/*" />
+              <input id="entryImageData" type="hidden" value="" />
+              <div class="entry-image-preview" id="entryImagePreview" hidden></div>
+              <button class="soft-btn entry-image-remove-btn" id="removeEntryImageBtn" type="button" hidden>remove image</button>
+            </div>
           </div>
         </div>
       </div>

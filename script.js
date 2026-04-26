@@ -8,6 +8,7 @@ const supabaseClient = supabase.createClient(
 const ANNIVERSARY_WRAPPER_URL =
   'https://noturv0id.github.io/our-memories/anniversary-wrapper.html?v=20260422-3';
 const STICKER_MIME_TYPE = 'application/x-our-memories-sticker';
+const ENTRY_IMAGE_BUCKET = 'profile-pictures';
 // Add your GIPHY API key here to enable public GIF search in the sticker popup.
 const GIPHY_API_KEY = '34udc7WiSDjXKrRbb9UgwcD2piNXT3uO';
 const GIPHY_CLIENT_KEY = 'our_memories_sticker_box';
@@ -407,6 +408,7 @@ const rightZone = document.getElementById('rightZone');
 const timelineEl = document.getElementById('timeline');
       const mobileViewSwitcher = document.getElementById('mobileViewSwitcher');
       const mobileViewButtons = Array.from(document.querySelectorAll('[data-mobile-view]'));
+      const launchSplash = document.getElementById('launchSplash');
       const stickerPopup = document.getElementById('stickerPopup');
       const stickerTabs = document.getElementById('stickerTabs');
       const stickerInput = document.getElementById('stickerInput');
@@ -433,9 +435,13 @@ const timelineEl = document.getElementById('timeline');
        const entryPopupTitle = entryPopup?.querySelector('.popup-title');
        const entryPopupLabel = entryPopup?.querySelector('.popup-label');
        const closeEntryPopup = document.getElementById('closeEntryPopup');
-       const entryEditor = document.getElementById('entryEditor');
-       const entryContentFallback = document.getElementById('entryContentFallback');
-       const saveEntryBtn = document.getElementById('saveEntryBtn');
+      const entryEditor = document.getElementById('entryEditor');
+      const entryContentFallback = document.getElementById('entryContentFallback');
+      const entryImageInput = document.getElementById('entryImageInput');
+      const entryImageData = document.getElementById('entryImageData');
+      const entryImagePreview = document.getElementById('entryImagePreview');
+      const removeEntryImageBtn = document.getElementById('removeEntryImageBtn');
+      const saveEntryBtn = document.getElementById('saveEntryBtn');
        const commentsPopup = document.getElementById('commentsPopup');
        const closeCommentsPopup = document.getElementById('closeCommentsPopup');
        const commentsList = document.getElementById('commentsList');
@@ -451,8 +457,65 @@ const timelineEl = document.getElementById('timeline');
       const clearWidgetHistoryBtn = document.getElementById('clearWidgetHistoryBtn');
       let lastScrollY = window.scrollY || 0;
       const MOBILE_VIEW_STORAGE_KEY = 'ourMemoriesMobileView';
+      const BOOT_SPLASH_MIN_MS = 2000;
+      const BOOT_SPLASH_FADE_MS = 450;
+      const bootStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
       let activeMobileView = 'timeline';
       let wasMobileLayoutActive = isMobileLayoutActive();
+
+      function normalizeChromeSymbols() {
+        const brandIconsEl = document.querySelector('.brand-icons');
+        if (brandIconsEl) {
+          brandIconsEl.innerHTML = `
+            <span aria-hidden="true">♡</span>
+            <span aria-hidden="true">✦</span>
+            <span aria-hidden="true">🎀</span>
+          `;
+        }
+
+        const siteTitleEl = document.querySelector('.site-title');
+        if (siteTitleEl) {
+          siteTitleEl.textContent = 'our memories ♡';
+        }
+
+        const quotePillEl = document.querySelector('.quote-pill');
+        if (quotePillEl) {
+          quotePillEl.textContent = 'forever and always ♡';
+        }
+
+        const notificationsIconEl = document.querySelector('.notifications-btn-icon');
+        if (notificationsIconEl) {
+          notificationsIconEl.textContent = '🕭';
+        }
+
+        const notificationTitleEl = document.querySelector('.notifications-title');
+        if (notificationTitleEl) {
+          notificationTitleEl.textContent = 'inbox ♡';
+        }
+
+        const profileTitleEl = document.querySelector('#profilePopup .popup-title');
+        if (profileTitleEl) {
+          profileTitleEl.textContent = 'my profile ♡';
+        }
+
+        if (entryPopupTitle) {
+          entryPopupTitle.textContent = 'new entry ✎';
+        }
+
+        if (entryPopupLabel) {
+          entryPopupLabel.textContent = 'write something ♡';
+        }
+
+        const commentsTitleEl = document.querySelector('#commentsPopup .popup-title');
+        if (commentsTitleEl) {
+          commentsTitleEl.textContent = 'comments ♡';
+        }
+
+        const stickerTitleEl = document.querySelector('#stickerPopup .popup-title');
+        if (stickerTitleEl) {
+          stickerTitleEl.textContent = '✦ sticker box ♡';
+        }
+      }
 
       function setHeaderWidgetSaveVisibility(isVisible) {
         if (!headerSaveWidgetBtn) return;
@@ -464,12 +527,53 @@ const timelineEl = document.getElementById('timeline');
         return window.matchMedia('(max-width: 720px)').matches;
       }
 
+      function shouldUseLaunchSplash() {
+        return window.matchMedia('(max-width: 720px)').matches;
+      }
+
       function syncMobileViewButtons() {
         mobileViewButtons.forEach((button) => {
           const isActive = button.dataset.mobileView === activeMobileView;
           button.classList.toggle('active', isActive);
           button.setAttribute('aria-pressed', String(isActive));
         });
+      }
+
+      function getMobileViewSection(view) {
+        if (view === 'left') return leftZone;
+        if (view === 'right') return rightZone;
+        return timelineEl;
+      }
+
+      function animateMobileViewTransition(nextView, previousView) {
+        if (!isMobileLayoutActive()) return;
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+        const nextSection = getMobileViewSection(nextView);
+        if (!nextSection) return;
+
+        nextSection.getAnimations?.().forEach((animation) => animation.cancel());
+        const viewOrder = ['left', 'timeline', 'right'];
+        const nextIndex = viewOrder.indexOf(nextView);
+        const previousIndex = viewOrder.indexOf(previousView);
+        const direction = nextIndex >= previousIndex ? 1 : -1;
+
+        nextSection.animate(
+          [
+            {
+              opacity: 0,
+              transform: `translate3d(${direction * 12}px, 0, 0)`
+            },
+            {
+              opacity: 1,
+              transform: 'translate3d(0, 0, 0)'
+            }
+          ],
+          {
+            duration: 220,
+            easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+          }
+        );
       }
 
       function applyMobileView() {
@@ -483,8 +587,14 @@ const timelineEl = document.getElementById('timeline');
       function setMobileView(nextView, options = {}) {
         const { persist = true } = options;
         const allowedViews = new Set(['timeline', 'left', 'right']);
+        const previousView = activeMobileView;
         activeMobileView = allowedViews.has(nextView) ? nextView : 'timeline';
         applyMobileView();
+        if (activeMobileView !== previousView) {
+          requestAnimationFrame(() => {
+            animateMobileViewTransition(activeMobileView, previousView);
+          });
+        }
 
         if (!persist) return;
 
@@ -688,7 +798,7 @@ const timelineEl = document.getElementById('timeline');
        }
 
        function looksLikeHtml(value) {
-         return /<\/?[a-z][\s>]/i.test(String(value || ''));
+         return /<\/?[a-z][\w:-]*(?:\s[^<>]*?)?>/i.test(String(value || ''));
        }
 
        function sanitizePostHtml(html) {
@@ -703,9 +813,132 @@ const timelineEl = document.getElementById('timeline');
          return String(html || '');
        }
 
-       function toSafeHtmlFromPlainText(text) {
+      function toSafeHtmlFromPlainText(text) {
          return sanitizePostHtml(escapeHtml(text).replaceAll('\n', '<br>'));
        }
+
+      function decodeHtmlEntities(value) {
+        const textarea = document.createElement('textarea');
+        textarea.innerHTML = String(value || '');
+        return textarea.value;
+      }
+
+      function decodeStoredHtml(value, maxPasses = 4) {
+        let currentValue = String(value || '');
+
+        for (let pass = 0; pass < maxPasses; pass += 1) {
+          const nextValue = decodeHtmlEntities(currentValue);
+          if (nextValue === currentValue) {
+            break;
+          }
+          currentValue = nextValue;
+        }
+
+        return currentValue;
+      }
+
+      function reviveLiteralHtmlFragments(html) {
+        const template = document.createElement('template');
+        template.innerHTML = String(html || '');
+        const allowedLiteralTagPattern = /<\/?(?:p|h[1-6]|strong|em|u|blockquote|ul|ol|li|figure|img|br|a|span)\b/i;
+        const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
+        const textNodes = [];
+
+        while (walker.nextNode()) {
+          textNodes.push(walker.currentNode);
+        }
+
+        textNodes.forEach((textNode) => {
+          const rawText = String(textNode.textContent || '');
+          if (!allowedLiteralTagPattern.test(rawText) || !rawText.includes('<')) {
+            return;
+          }
+
+          const revivedHtml = sanitizePostHtml(rawText);
+          if (!looksLikeHtml(revivedHtml)) {
+            return;
+          }
+
+          const fragmentTemplate = document.createElement('template');
+          fragmentTemplate.innerHTML = revivedHtml;
+          textNode.replaceWith(fragmentTemplate.content.cloneNode(true));
+        });
+
+        return template.innerHTML;
+      }
+
+      function isInlineImageDataUrl(value) {
+        return /^data:image\/[a-zA-Z0-9.+-]+;base64,/i.test(String(value || '').trim());
+      }
+
+      async function uploadEntryImageData(userId, imageDataUrl) {
+        const normalizedImage = String(imageDataUrl || '').trim();
+        if (!userId || !isInlineImageDataUrl(normalizedImage)) {
+          return normalizedImage;
+        }
+
+        const response = await fetch(normalizedImage);
+        const blob = await response.blob();
+        const extension = blob.type === 'image/png' ? 'png' : 'jpg';
+        const filePath = `${userId}/entry-images/${Date.now()}-${crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2)}.${extension}`;
+
+        const { error: uploadError } = await supabaseClient.storage
+          .from(ENTRY_IMAGE_BUCKET)
+          .upload(filePath, blob, {
+            contentType: blob.type || 'image/jpeg'
+          });
+
+        if (uploadError) {
+          throw uploadError;
+        }
+
+        const { data } = supabaseClient.storage
+          .from(ENTRY_IMAGE_BUCKET)
+          .getPublicUrl(filePath);
+
+        return data?.publicUrl || normalizedImage;
+      }
+
+      function extractEntryAttachment(content) {
+        const template = document.createElement('template');
+        template.innerHTML = sanitizePostHtml(String(content || ''));
+        const attachmentImage = template.content.querySelector('img.entry-attachment-image');
+        const image = attachmentImage?.getAttribute('src') || '';
+        attachmentImage?.closest('.entry-attachment')?.remove();
+        return {
+          content: template.innerHTML.trim(),
+          image
+        };
+      }
+
+      function composeEntryContentWithAttachment(content, image) {
+        const normalizedContent = sanitizePostHtml(String(content || '')).trim();
+        const normalizedImage = String(image || '').trim();
+
+        if (!normalizedImage) {
+          return normalizedContent;
+        }
+
+        const attachmentHtml = `
+          <figure class="entry-attachment">
+            <img class="entry-attachment-image" src="${escapeHtml(normalizedImage)}" alt="entry attachment" loading="lazy" decoding="async" />
+          </figure>
+        `;
+
+        return normalizedContent ? `${normalizedContent}${attachmentHtml}` : attachmentHtml;
+      }
+
+      function renderEntryImagePreview(image) {
+        if (!entryImagePreview || !removeEntryImageBtn || !entryImageData) return;
+
+        const normalizedImage = String(image || '').trim();
+        entryImageData.value = normalizedImage;
+        entryImagePreview.hidden = !normalizedImage;
+        removeEntryImageBtn.hidden = !normalizedImage;
+        entryImagePreview.innerHTML = normalizedImage
+          ? `<img src="${escapeHtml(normalizedImage)}" alt="entry attachment preview" />`
+          : '';
+      }
 
       function compressImageFile(file, options = {}) {
         const { maxSize = 900, quality = 0.82 } = options;
@@ -741,7 +974,30 @@ const timelineEl = document.getElementById('timeline');
       function getPostDisplayHtml(content) {
         const value = String(content || '');
         if (!value) return '';
-        return looksLikeHtml(value) ? sanitizePostHtml(value) : toSafeHtmlFromPlainText(value);
+
+        const containsEscapedHtml = /&lt;\s*\/?[a-z]/i.test(value);
+
+        if (looksLikeHtml(value)) {
+          if (containsEscapedHtml) {
+            const decodedHtmlValue = decodeStoredHtml(value);
+            if (decodedHtmlValue !== value && looksLikeHtml(decodedHtmlValue)) {
+              return reviveLiteralHtmlFragments(sanitizePostHtml(decodedHtmlValue));
+            }
+          }
+
+          return reviveLiteralHtmlFragments(sanitizePostHtml(value));
+        }
+
+        if (!/&(?:lt|gt|quot|#39|amp);/i.test(value)) {
+          return toSafeHtmlFromPlainText(value);
+        }
+
+        const decodedValue = decodeStoredHtml(value);
+        if (decodedValue !== value && looksLikeHtml(decodedValue)) {
+          return reviveLiteralHtmlFragments(sanitizePostHtml(decodedValue));
+        }
+
+        return toSafeHtmlFromPlainText(value);
       }
 
       function getUrlsFromPostText(postTextEl) {
@@ -866,10 +1122,15 @@ const timelineEl = document.getElementById('timeline');
        function clearEntryComposer() {
          if (entryQuill) {
            entryQuill.setContents([]);
-           return;
+         } else if (entryContentFallback) {
+           entryContentFallback.value = '';
          }
 
-         if (entryContentFallback) entryContentFallback.value = '';
+         if (entryImageInput) {
+           entryImageInput.value = '';
+         }
+
+         renderEntryImagePreview('');
        }
 
        function focusEntryComposerToEnd() {
@@ -883,14 +1144,20 @@ const timelineEl = document.getElementById('timeline');
        }
 
        function setEntryComposerFromStoredContent(content) {
-         const html = getPostDisplayHtml(content);
+         const { content: textContent, image } = extractEntryAttachment(getPostDisplayHtml(content));
+         const html = textContent;
 
          if (entryQuill) {
            entryQuill.clipboard.dangerouslyPasteHTML(html || '');
-           return;
+         } else if (entryContentFallback) {
+           entryContentFallback.value = htmlToPlainText(html);
          }
 
-         if (entryContentFallback) entryContentFallback.value = htmlToPlainText(html);
+         if (entryImageInput) {
+           entryImageInput.value = '';
+         }
+
+         renderEntryImagePreview(image);
        }
 
       function renderDecor() {
@@ -1729,6 +1996,7 @@ async function loadWidgets(options = {}) {
 
 function renderWidgets() {
   const shouldAnimateMobileReorder = isMobileLayoutActive();
+  const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
   previousMobileWidgetRects.clear();
   if (shouldAnimateMobileReorder) {
@@ -2028,7 +2296,7 @@ function renderWidgets() {
     }
   });
 
-  if (shouldAnimateMobileReorder) {
+  if (shouldAnimateMobileReorder && !prefersReducedMotion) {
     requestAnimationFrame(() => {
       document.querySelectorAll('.widget[data-widget-id]').forEach((widgetEl) => {
         const previousRect = previousMobileWidgetRects.get(widgetEl.dataset.widgetId);
@@ -2043,20 +2311,32 @@ function renderWidgets() {
         }
 
         widgetEl.classList.add('widget-mobile-reordering');
-        widgetEl.style.transition = 'none';
-        widgetEl.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+        widgetEl.getAnimations?.().forEach((animation) => animation.cancel());
+        const reorderAnimation = widgetEl.animate(
+          [
+            {
+              transform: `translate3d(${deltaX}px, ${deltaY}px, 0) scale(0.985)`,
+              opacity: 0.82
+            },
+            {
+              transform: 'translate3d(0, 0, 0) scale(1)',
+              opacity: 1
+            }
+          ],
+          {
+            duration: 460,
+            easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+          }
+        );
 
-        requestAnimationFrame(() => {
-          widgetEl.style.transition = '';
-          widgetEl.style.transform = '';
-        });
-      });
-
-      window.setTimeout(() => {
-        document.querySelectorAll('.widget.widget-mobile-reordering').forEach((widgetEl) => {
+        reorderAnimation.addEventListener('finish', () => {
           widgetEl.classList.remove('widget-mobile-reordering');
-        });
-      }, 420);
+        }, { once: true });
+
+        reorderAnimation.addEventListener('cancel', () => {
+          widgetEl.classList.remove('widget-mobile-reordering');
+        }, { once: true });
+      });
     });
   }
 
@@ -2789,15 +3069,28 @@ function getPostLikeLabel(post) {
   return `${post.likedByMe ? '🩷 liked' : '♡ like'} (${post.likesCount || 0})`;
 }
 
+function getPostLikeIcon(post) {
+  return post.likedByMe ? '🩷' : '♡';
+}
+
+function getPostLikeButtonMarkup(post) {
+  return `
+    <span class="post-btn-icon" aria-hidden="true">${post.likedByMe ? '🩷' : '♡'}</span>
+    <span class="post-btn-label">${post.likedByMe ? 'liked' : 'like'}</span>
+    <span class="post-btn-count">(${post.likesCount || 0})</span>
+  `;
+}
+
 function syncPostLikeButton(postId) {
   const post = posts.find((item) => item.id === postId);
   const btn = document.querySelector(`.like-btn[data-post-id="${postId}"]`);
 
   if (!post || !btn) return;
 
-  btn.textContent = getPostLikeLabel(post);
+  btn.innerHTML = getPostLikeButtonMarkup(post);
   btn.classList.toggle('liked', Boolean(post.likedByMe));
   btn.classList.toggle('is-pending', pendingPostLikeIds.has(postId));
+  btn.setAttribute('aria-label', post.likedByMe ? 'liked post' : 'like post');
   btn.setAttribute('aria-pressed', String(Boolean(post.likedByMe)));
 }
 
@@ -2846,23 +3139,33 @@ function renderTimeline() {
             class="post-btn like-btn${post.likedByMe ? ' liked' : ''}${pendingPostLikeIds.has(post.id) ? ' is-pending' : ''}"
             type="button"
             data-post-id="${post.id}"
+            aria-label="${post.likedByMe ? 'liked post' : 'like post'}"
             aria-pressed="${post.likedByMe ? 'true' : 'false'}"
           >
-            ${getPostLikeLabel(post)}
+            ${getPostLikeButtonMarkup(post)}
           </button>
-          <button class="post-btn comments-btn" type="button" data-post-id="${post.id}">
-            comments (${post.comments?.length || 0})
+          <button
+            class="post-btn comments-btn"
+            type="button"
+            data-post-id="${post.id}"
+            aria-label="open comments"
+          >
+            <span class="post-btn-icon" aria-hidden="true">💬</span>
+            <span class="post-btn-label">comments</span>
+            <span class="post-btn-count">(${post.comments?.length || 0})</span>
           </button>
           <button
             class="post-btn stickers-btn"
             type="button"
             data-post-id="${post.id}"
+            aria-label="open stickers"
             aria-pressed="false"
           >
-            stickers
+            <span class="post-btn-icon" aria-hidden="true">✦</span>
+            <span class="post-btn-label">stickers</span>
           </button>
-          ${isOwner ? `<button class="post-btn edit-entry-btn" type="button" data-post-id="${post.id}">edit</button>` : ''}
-          ${isOwner ? `<button class="post-btn delete-entry-btn" type="button" data-post-id="${post.id}">delete</button>` : ''}
+          ${isOwner ? `<button class="post-btn edit-entry-btn" type="button" data-post-id="${post.id}" aria-label="edit entry"><span class="post-btn-icon" aria-hidden="true">✎</span><span class="post-btn-label">edit</span></button>` : ''}
+          ${isOwner ? `<button class="post-btn delete-entry-btn" type="button" data-post-id="${post.id}" aria-label="delete entry"><span class="post-btn-icon" aria-hidden="true">🗑</span><span class="post-btn-label">delete</span></button>` : ''}
         </div>
         <div class="reaction-layer"></div>
       </div>
@@ -3486,6 +3789,7 @@ function startWidgetDrag(event, widget, element) {
   const zone = widget.side === 'left' ? leftZone : rightZone;
   bringWidgetToFront(widget);
   element.style.zIndex = String(widget.zIndex);
+  event.target?.setPointerCapture?.(event.pointerId);
 
   pendingWidgetDrag = {
     widget,
@@ -3495,8 +3799,59 @@ function startWidgetDrag(event, widget, element) {
     startY: event.clientY,
     originX: widget.x,
     originY: widget.y,
-    pointerId: event.pointerId
+    pointerId: event.pointerId,
+    latestClientX: event.clientX,
+    latestClientY: event.clientY,
+    frameId: null
   };
+}
+
+function updateDraggedWidgetPosition() {
+  if (!dragWidget) return;
+
+  dragWidget.frameId = null;
+
+  const {
+    widget,
+    zone,
+    element,
+    startX,
+    startY,
+    originX,
+    originY,
+    latestClientX,
+    latestClientY
+  } = dragWidget;
+
+  const pageRect = document.querySelector('.page')?.getBoundingClientRect() || document.documentElement.getBoundingClientRect();
+  const zoneRect = zone.getBoundingClientRect();
+  const widgetWidth = element.offsetWidth || 240;
+  const widgetHeight = element.offsetHeight || 100;
+  const nextX = originX + (latestClientX - startX);
+  const nextY = originY + (latestClientY - startY);
+  const gutter = 8;
+  const midpoint = pageRect.left + (pageRect.width / 2);
+  const minX =
+    widget.side === 'left'
+      ? pageRect.left - zoneRect.left + gutter
+      : midpoint - zoneRect.left + gutter;
+  const maxX =
+    widget.side === 'left'
+      ? midpoint - zoneRect.left - widgetWidth - gutter
+      : pageRect.right - zoneRect.left - widgetWidth - gutter;
+  const minY = Math.max(pageRect.top - zoneRect.top + gutter, 0);
+  const maxY = Math.max(minY, pageRect.bottom - zoneRect.top - widgetHeight - gutter);
+
+  widget.x = Math.round(Math.max(minX, Math.min(maxX, nextX)));
+  widget.y = Math.round(Math.max(minY, Math.min(maxY, nextY)));
+
+  element.style.left = `${widget.x}px`;
+  element.style.top = `${widget.y}px`;
+}
+
+function scheduleDraggedWidgetPositionUpdate() {
+  if (!dragWidget || dragWidget.frameId) return;
+  dragWidget.frameId = window.requestAnimationFrame(updateDraggedWidgetPosition);
 }
 
 window.addEventListener('pointermove', (event) => {
@@ -3535,31 +3890,9 @@ window.addEventListener('pointermove', (event) => {
 
   if (!dragWidget) return;
 
-  const { widget, zone, element, startX, startY, originX, originY } = dragWidget;
-  const zoneRect = zone.getBoundingClientRect();
-  const pageRect = document.querySelector('.page')?.getBoundingClientRect() || document.documentElement.getBoundingClientRect();
-  const widgetWidth = element.offsetWidth || 240;
-  const widgetHeight = element.offsetHeight || 100;
-  const nextX = originX + (event.clientX - startX);
-  const nextY = originY + (event.clientY - startY);
-
-  const pageMidpoint = pageRect.left + (pageRect.width / 2);
-  const minX =
-    widget.side === 'left'
-      ? pageRect.left - zoneRect.left + 8
-      : pageMidpoint - zoneRect.left + 8;
-  const maxX =
-    widget.side === 'left'
-      ? pageMidpoint - zoneRect.left - widgetWidth - 8
-      : pageRect.right - zoneRect.left - widgetWidth - 8;
-  const minY = Math.max(pageRect.top - zoneRect.top + 8, 0);
-  const maxY = Math.max(minY, pageRect.bottom - zoneRect.top - widgetHeight - 8);
-
-  widget.x = Math.max(minX, Math.min(maxX, nextX));
-  widget.y = Math.max(minY, Math.min(maxY, nextY));
-
-  dragWidget.element.style.left = widget.x + 'px';
-  dragWidget.element.style.top = widget.y + 'px';
+  dragWidget.latestClientX = event.clientX;
+  dragWidget.latestClientY = event.clientY;
+  scheduleDraggedWidgetPositionUpdate();
 });
 
 window.addEventListener('pointerup', async () => {
@@ -3597,6 +3930,12 @@ window.addEventListener('pointerup', async () => {
 
   const finishedDrag = dragWidget;
 
+  if (dragWidget?.frameId) {
+    window.cancelAnimationFrame(dragWidget.frameId);
+    dragWidget.frameId = null;
+    updateDraggedWidgetPosition();
+  }
+
   if (dragWidget?.element) {
     dragWidget.element.classList.remove('dragging');
   }
@@ -3613,6 +3952,18 @@ window.addEventListener('pointerup', async () => {
 });
 
 window.addEventListener('pointercancel', () => {
+  if (dragWidget?.frameId) {
+    window.cancelAnimationFrame(dragWidget.frameId);
+  }
+
+  if (dragWidget?.element) {
+    dragWidget.element.classList.remove('dragging');
+  }
+
+  dragWidget = null;
+  pendingWidgetDrag = null;
+  document.body.classList.remove('dragging-widget');
+
   if (draggingPlacedSticker?.element) {
     draggingPlacedSticker.element.classList.remove('is-dragging');
   }
@@ -3720,6 +4071,39 @@ if (typedStickerPreview) {
         resetEntryPopup();
         entryPopup.classList.remove('open');
       });
+
+      if (entryImageInput) {
+        entryImageInput.addEventListener('change', async () => {
+          const file = entryImageInput.files?.[0];
+
+          if (!file) {
+            return;
+          }
+
+          try {
+            const imageData = await compressImageFile(file, {
+              maxSize: 1200,
+              quality: 0.84
+            });
+            renderEntryImagePreview(imageData);
+          } catch (error) {
+            console.error(error);
+            showMessage(error.message || 'could not load image ♡');
+            entryImageInput.value = '';
+            renderEntryImagePreview('');
+          }
+        });
+      }
+
+      if (removeEntryImageBtn) {
+        removeEntryImageBtn.addEventListener('click', () => {
+          if (entryImageInput) {
+            entryImageInput.value = '';
+          }
+
+          renderEntryImagePreview('');
+        });
+      }
 
       entryPopup.addEventListener('click', (event) => {
          if (event.target === entryPopup && !popupPointerStartedInsideCard) {
@@ -3980,6 +4364,23 @@ function setToolbarAuthState(state) {
 
 function setAppBootingState(isBooting) {
   document.body.classList.toggle('app-booting', isBooting);
+}
+
+function hideLaunchSplash() {
+  if (!launchSplash) {
+    setAppBootingState(false);
+    return Promise.resolve();
+  }
+
+  launchSplash.classList.add('is-hiding');
+
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      setAppBootingState(false);
+      launchSplash.hidden = true;
+      resolve();
+    }, BOOT_SPLASH_FADE_MS);
+  });
 }
 
 function renderSignedOutShell() {
@@ -4981,7 +5382,8 @@ async function saveEntry() {
     content = toSafeHtmlFromPlainText(plainText);
   }
 
-  if (!plainText) {
+  const attachedImage = String(entryImageData?.value || '').trim();
+  if (!plainText && !attachedImage) {
     showMessage('write something first ♡');
     return;
   }
@@ -4992,6 +5394,20 @@ async function saveEntry() {
     showMessage('please log in first ♡');
     return;
   }
+
+  let entryImageUrl = attachedImage;
+
+  if (isInlineImageDataUrl(attachedImage)) {
+    try {
+      entryImageUrl = await uploadEntryImageData(user.id, attachedImage);
+    } catch (error) {
+      console.error(error);
+      showMessage(error.message || 'could not upload image ♡');
+      return;
+    }
+  }
+
+  content = composeEntryContentWithAttachment(content, entryImageUrl);
 
   let error;
 
@@ -5468,6 +5884,7 @@ document.addEventListener('click', (event) => {
       }, true);
 
 setTheme(document.documentElement.dataset.theme);
+normalizeChromeSymbols();
 try {
   activeMobileView = localStorage.getItem(MOBILE_VIEW_STORAGE_KEY) || 'timeline';
 } catch (error) {
@@ -5486,9 +5903,20 @@ async function initApp() {
   try {
     await checkSession();
   } finally {
-    requestAnimationFrame(() => {
+    if (!shouldUseLaunchSplash()) {
+      if (launchSplash) {
+        launchSplash.hidden = true;
+      }
       setAppBootingState(false);
-    });
+      return;
+    }
+
+    const elapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - bootStartedAt;
+    const remaining = Math.max(0, BOOT_SPLASH_MIN_MS - elapsed);
+
+    window.setTimeout(() => {
+      void hideLaunchSplash();
+    }, remaining);
   }
 }
 
