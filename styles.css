@@ -1262,8 +1262,9 @@
         gap: 8px;
         align-items: center;
         justify-content: flex-start;
-        width: 100%;
+        width: fit-content;
         max-width: 100%;
+        margin-inline: auto;
         min-width: 0;
         overflow-x: auto;
         overflow-y: hidden;
@@ -3226,7 +3227,11 @@ html[data-theme='dark'] .typed-sticker-preview:focus-visible {
           position: relative;
           overflow: visible;
           display: block;
-          transition: min-height 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+          transition: min-height 0.26s cubic-bezier(0.2, 0, 0, 1);
+        }
+
+        .layout.mobile-view-transitioning {
+          overflow: hidden;
         }
 
         .timeline,
@@ -3254,14 +3259,6 @@ html[data-theme='dark'] .typed-sticker-preview:focus-visible {
           pointer-events: auto;
           transform: none;
           transition: visibility 0s;
-        }
-
-        .mobile-view-leaving {
-          position: absolute !important;
-          inset: 0 !important;
-          opacity: 1 !important;
-          visibility: visible !important;
-          pointer-events: none !important;
         }
 
         .timeline {
@@ -3488,7 +3485,9 @@ html[data-theme='dark'] .typed-sticker-preview:focus-visible {
 
         .photo-editor-toolbar {
           justify-content: flex-start;
+          width: fit-content;
           max-width: 100%;
+          margin-inline: auto;
           gap: 6px;
           padding-right: 6px;
           scroll-padding-inline: 0 6px;
@@ -3566,4 +3565,3 @@ html[data-theme='dark'] .typed-sticker-preview:focus-visible {
           color: var(--text);
         }
       }
-

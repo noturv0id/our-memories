@@ -606,6 +606,8 @@ const timelineEl = document.getElementById('timeline');
       const bootStartedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
       let activeMobileView = 'timeline';
       let wasMobileLayoutActive = isMobileLayoutActive();
+      let mobileViewTransitionTimer = null;
+      let mobileViewTransitionId = 0;
 
       function normalizeChromeSymbols() {
         const brandIconsEl = document.querySelector('.brand-icons');
@@ -709,35 +711,112 @@ const timelineEl = document.getElementById('timeline');
         return timelineEl;
       }
 
-      function animateMobileViewTransition(nextView, previousView) {
-        if (!isMobileLayoutActive()) return;
-        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+      function canAnimateMobileViewTransition() {
+        return (
+          isMobileLayoutActive() &&
+          !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+        );
+      }
 
+      function animateMobileViewTransition(nextView, previousView, previousHeight = 0) {
+        if (!canAnimateMobileViewTransition()) {
+          applyMobileView();
+          return;
+        }
+
+        const layoutEl = document.querySelector('.layout');
+        const previousSection = getMobileViewSection(previousView);
         const nextSection = getMobileViewSection(nextView);
         if (!nextSection) return;
+        const transitionId = ++mobileViewTransitionId;
 
-        nextSection.getAnimations?.().forEach((animation) => animation.cancel());
+        if (mobileViewTransitionTimer) {
+          window.clearTimeout(mobileViewTransitionTimer);
+          mobileViewTransitionTimer = null;
+        }
+
+        [timelineEl, leftZone, rightZone].forEach((section) => {
+          section?.getAnimations?.().forEach((animation) => animation.cancel());
+        });
+
         const viewOrder = ['left', 'timeline', 'right'];
         const nextIndex = viewOrder.indexOf(nextView);
         const previousIndex = viewOrder.indexOf(previousView);
         const direction = nextIndex >= previousIndex ? 1 : -1;
+        const nextHeight = nextSection.scrollHeight || nextSection.getBoundingClientRect().height || previousHeight;
 
-        nextSection.animate(
+        if (layoutEl) {
+          layoutEl.classList.add('mobile-view-transitioning');
+          if (previousHeight) {
+            layoutEl.style.minHeight = `${Math.round(previousHeight)}px`;
+          }
+        }
+
+        const finishTransition = () => {
+          if (transitionId !== mobileViewTransitionId) return;
+
+          applyMobileView();
+
+          requestAnimationFrame(() => {
+            if (transitionId !== mobileViewTransitionId) return;
+
+            const renderedNextHeight = nextSection.getBoundingClientRect().height || nextHeight;
+            if (layoutEl && renderedNextHeight) {
+              layoutEl.style.minHeight = `${Math.round(renderedNextHeight)}px`;
+            }
+
+            nextSection.animate(
+              [
+                {
+                  opacity: 0,
+                  transform: `translate3d(${direction * 8}px, 6px, 0) scale(0.996)`
+                },
+                {
+                  opacity: 1,
+                  transform: 'translate3d(0, 0, 0) scale(1)'
+                }
+              ],
+              {
+                duration: 240,
+                easing: 'cubic-bezier(0.2, 0, 0, 1)'
+              }
+            );
+
+            mobileViewTransitionTimer = window.setTimeout(() => {
+              if (transitionId !== mobileViewTransitionId) return;
+              layoutEl?.classList.remove('mobile-view-transitioning');
+              if (layoutEl) {
+                layoutEl.style.minHeight = '';
+              }
+              mobileViewTransitionTimer = null;
+            }, 260);
+          });
+        };
+
+        if (!previousSection || previousSection === nextSection) {
+          finishTransition();
+          return;
+        }
+
+        const outAnimation = previousSection.animate(
           [
             {
-              opacity: 0,
-              transform: `translate3d(${direction * 12}px, 0, 0)`
+              opacity: 1,
+              transform: 'translate3d(0, 0, 0) scale(1)'
             },
             {
-              opacity: 1,
-              transform: 'translate3d(0, 0, 0)'
+              opacity: 0,
+              transform: `translate3d(${direction * -6}px, -4px, 0) scale(0.998)`
             }
           ],
           {
-            duration: 220,
-            easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+            duration: 110,
+            easing: 'cubic-bezier(0.4, 0, 1, 1)',
+            fill: 'forwards'
           }
         );
+
+        outAnimation.finished.then(finishTransition).catch(finishTransition);
       }
 
       function applyMobileView() {
@@ -751,13 +830,29 @@ const timelineEl = document.getElementById('timeline');
       function setMobileView(nextView, options = {}) {
         const { persist = true } = options;
         const allowedViews = new Set(['timeline', 'left', 'right']);
-        const previousView = activeMobileView;
+        const pageEl = document.querySelector('.page');
+        const visibleView = pageEl?.dataset.mobileView;
+        const previousView = allowedViews.has(visibleView) ? visibleView : activeMobileView;
+        const previousHeight =
+          isMobileLayoutActive()
+            ? getMobileViewSection(previousView)?.getBoundingClientRect().height || 0
+            : 0;
         activeMobileView = allowedViews.has(nextView) ? nextView : 'timeline';
-        applyMobileView();
-        if (activeMobileView !== previousView) {
-          requestAnimationFrame(() => {
-            animateMobileViewTransition(activeMobileView, previousView);
-          });
+        if (activeMobileView !== previousView && canAnimateMobileViewTransition()) {
+          syncMobileViewButtons();
+          animateMobileViewTransition(activeMobileView, previousView, previousHeight);
+        } else {
+          mobileViewTransitionId += 1;
+          if (mobileViewTransitionTimer) {
+            window.clearTimeout(mobileViewTransitionTimer);
+            mobileViewTransitionTimer = null;
+          }
+          const layoutEl = document.querySelector('.layout');
+          layoutEl?.classList.remove('mobile-view-transitioning');
+          if (layoutEl) {
+            layoutEl.style.minHeight = '';
+          }
+          applyMobileView();
         }
 
         if (!persist) return;
