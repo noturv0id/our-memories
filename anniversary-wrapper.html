@@ -56,34 +56,13 @@
         border: 1px solid var(--border);
         border-radius: 34px;
         background:
+          radial-gradient(circle at 5% 6%, rgba(240, 184, 203, 0.18), transparent 27%),
+          radial-gradient(circle at 96% 100%, rgba(240, 184, 203, 0.14), transparent 28%),
           linear-gradient(180deg, var(--card-strong), var(--card));
         box-shadow: var(--shadow);
         text-align: center;
         position: relative;
-        overflow: clip;
         isolation: isolate;
-      }
-
-      main::before,
-      main::after {
-        content: "";
-        position: absolute;
-        width: 140px;
-        height: 140px;
-        border-radius: 999px;
-        background: radial-gradient(circle, rgba(240, 184, 203, 0.16), transparent 68%);
-        pointer-events: none;
-        z-index: 0;
-      }
-
-      main::before {
-        top: -58px;
-        left: -52px;
-      }
-
-      main::after {
-        right: -54px;
-        bottom: -60px;
       }
 
       .eyebrow {

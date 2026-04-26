@@ -6,7 +6,7 @@ const supabaseClient = supabase.createClient(
   SUPABASE_ANON_KEY
 );
 const ANNIVERSARY_WRAPPER_URL =
-  'https://noturv0id.github.io/our-memories/anniversary-wrapper.html?v=20260426-7';
+  'https://noturv0id.github.io/our-memories/anniversary-wrapper.html?v=20260426-8';
 const STICKER_MIME_TYPE = 'application/x-our-memories-sticker';
 const ENTRY_IMAGE_BUCKET = 'profile-pictures';
 // Add your GIPHY API key here to enable public GIF search in the sticker popup.
