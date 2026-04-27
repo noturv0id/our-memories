@@ -9,7 +9,6 @@ const ANNIVERSARY_WRAPPER_URL =
   'https://noturv0id.github.io/our-memories/anniversary-wrapper.html?v=20260426-8';
 const STICKER_MIME_TYPE = 'application/x-our-memories-sticker';
 const ENTRY_IMAGE_BUCKET = 'profile-pictures';
-// Add your GIPHY API key here to enable public GIF search in the sticker popup.
 const GIPHY_API_KEY = '34udc7WiSDjXKrRbb9UgwcD2piNXT3uO';
 const GIPHY_CLIENT_KEY = 'our_memories_sticker_box';
 const GIPHY_SEARCH_ENDPOINT = 'https://api.giphy.com/v1/gifs/search';
@@ -236,7 +235,6 @@ const STICKER_PICKER_GROUPS = [
       }
   },
 
-  // Duplicate of pinned photo widget on the right side
   {
     id: 'photo-pin-right',
     title: '♡ pin it ⊹˚₊',
@@ -524,6 +522,14 @@ const STICKER_PICKER_GROUPS = [
       let personalStickers = [];
       let placedStickers = [];
 let notifications = [];
+let notificationSourceData = {
+  postsData: [],
+  commentsData: [],
+  likesData: [],
+  stickersData: [],
+  profilesData: []
+};
+let popupScrollLockTop = 0;
 let activeSticker = null;
 let dragWidget = null;
 let draggingPlacedSticker = null;
@@ -777,8 +783,8 @@ const timelineEl = document.getElementById('timeline');
                 }
               ],
               {
-                duration: 240,
-                easing: 'cubic-bezier(0.2, 0, 0, 1)'
+                duration: 320,
+                easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
               }
             );
 
@@ -1559,6 +1565,73 @@ function normalizeHexColor(value, fallback = '#ffffff') {
   }, -1) + 1;
 }
 
+function reorderWishlistItem(widget, wishId, direction) {
+  if (!widget?.data?.items?.length) return false;
+
+  const items = getWishlistItemsInDisplayOrder(widget.data.items);
+  const currentIndex = items.findIndex((item) => item.id === wishId);
+  const targetIndex =
+    direction === 'up' ? currentIndex - 1 :
+    direction === 'down' ? currentIndex + 1 :
+    currentIndex;
+
+  if (currentIndex === -1 || targetIndex < 0 || targetIndex >= items.length) {
+    return false;
+  }
+
+  [items[currentIndex], items[targetIndex]] = [items[targetIndex], items[currentIndex]];
+  widget.data.items = items.map((item, index) => ({
+    ...item,
+    order: index
+  }));
+
+  return true;
+}
+
+function getWishlistEditorRowRects(list) {
+  const rects = new Map();
+
+  list?.querySelectorAll?.('.wishlist-item-row[data-wish-id]').forEach((row) => {
+    rects.set(row.dataset.wishId, row.getBoundingClientRect());
+  });
+
+  return rects;
+}
+
+function animateWishlistEditorRows(list, previousRects) {
+  if (!list || !previousRects?.size) return;
+
+  list.querySelectorAll('.wishlist-item-row[data-wish-id]').forEach((row) => {
+    const previousRect = previousRects.get(row.dataset.wishId);
+    if (!previousRect) return;
+
+    const nextRect = row.getBoundingClientRect();
+    const deltaY = previousRect.top - nextRect.top;
+
+    if (Math.abs(deltaY) < 1) return;
+
+    row.animate(
+      [
+        { transform: `translateY(${deltaY}px)` },
+        { transform: 'translateY(0)' }
+      ],
+      {
+        duration: 260,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)'
+      }
+    );
+  });
+}
+
+function syncWishlistEditorReorderButtons(list) {
+  const rows = Array.from(list?.querySelectorAll?.('.wishlist-item-row[data-wish-id]') || []);
+
+  rows.forEach((row, index) => {
+    row.querySelector('[data-wish-direction="up"]')?.toggleAttribute('disabled', index === 0);
+    row.querySelector('[data-wish-direction="down"]')?.toggleAttribute('disabled', index === rows.length - 1);
+  });
+}
+
 function ensureWidgetStackOrder() {
   widgets.forEach((widget, index) => {
     if (!Number.isFinite(widget?.zIndex)) {
@@ -1718,10 +1791,12 @@ function normalizeSongWidget(widget) {
         : typeof rawData.image === 'string'
           ? rawData.image.trim()
           : '',
-    accent: Math.max(6, Math.min(94, Number.isFinite(accentValue) ? accentValue : 38))
+    accent: Math.max(6, Math.min(94, Number.isFinite(accentValue) ? accentValue : 38)),
+    likes: getWidgetLikeUserIds({ data: rawData }),
+    likeTimestamps: getWidgetLikeTimestamps({ data: rawData })
   };
 
-  const keysToKeep = ['spotifyUrl', 'spotifyUri', 'songName', 'durationLabel', 'coverUrl', 'accent'];
+  const keysToKeep = ['spotifyUrl', 'spotifyUri', 'songName', 'durationLabel', 'coverUrl', 'accent', 'likes', 'likeTimestamps'];
   const hasLegacyShape =
     Object.keys(rawData).some((key) => !keysToKeep.includes(key)) ||
     keysToKeep.some((key) => rawData[key] !== nextData[key]);
@@ -1819,6 +1894,7 @@ function isLikeableWidget(widget) {
   const normalizedTitle = String(widget?.title || '').toLowerCase();
 
   return (
+    normalizedId === 'song' ||
     normalizedId === 'note' ||
     normalizedTitle.includes('little note') ||
     normalizedTitle.includes('smol note') ||
@@ -1844,24 +1920,49 @@ function getWidgetLikeUserIds(widget) {
   )];
 }
 
+function getWidgetLikeTimestamps(widget) {
+  const widgetData = widget?.data && typeof widget.data === 'object' ? widget.data : {};
+  return widgetData.likeTimestamps && typeof widgetData.likeTimestamps === 'object'
+    ? widgetData.likeTimestamps
+    : {};
+}
+
 function normalizeWidgetLikesData(widget) {
   if (!widget || !isLikeableWidget(widget)) return false;
 
   const rawData = widget.data && typeof widget.data === 'object' ? widget.data : {};
   const normalizedLikes = getWidgetLikeUserIds({ data: rawData });
+  const rawTimestamps = rawData.likeTimestamps && typeof rawData.likeTimestamps === 'object'
+    ? rawData.likeTimestamps
+    : {};
+  const normalizedLikeSet = new Set(normalizedLikes);
+  const normalizedTimestamps = {};
+
+  Object.entries(rawTimestamps).forEach(([userId, timestamp]) => {
+    const normalizedUserId = String(userId || '').trim();
+    const normalizedTimestamp = String(timestamp || '').trim();
+    if (normalizedUserId && normalizedLikeSet.has(normalizedUserId) && normalizedTimestamp) {
+      normalizedTimestamps[normalizedUserId] = normalizedTimestamp;
+    }
+  });
+
   const hadLegacyLikesKey = Object.prototype.hasOwnProperty.call(rawData, 'likedUserIds');
+  const timestampsAlreadyNormalized =
+    Object.keys(rawTimestamps).length === Object.keys(normalizedTimestamps).length &&
+    Object.entries(normalizedTimestamps).every(([userId, timestamp]) => rawTimestamps[userId] === timestamp);
   const likesAlreadyNormalized =
     Array.isArray(rawData.likes) &&
     rawData.likes.length === normalizedLikes.length &&
     rawData.likes.every((userId, index) => String(userId || '').trim() === normalizedLikes[index]);
 
-  if (widget.data === rawData && likesAlreadyNormalized && !hadLegacyLikesKey) {
+  if (widget.data === rawData && likesAlreadyNormalized && timestampsAlreadyNormalized && !hadLegacyLikesKey) {
     return false;
   }
 
   const nextData = {
     ...rawData,
-    likes: normalizedLikes
+    likes: normalizedLikes,
+    likeTimestamps: normalizedTimestamps
   };
   delete nextData.likedUserIds;
   widget.data = nextData;
@@ -1892,6 +1993,16 @@ function getWidgetLikeContentSignature(widget) {
   const normalizedId = String(widget.id || '').toLowerCase().trim();
   const normalizedTitle = String(widget.title || '').toLowerCase();
   const data = widget.data && typeof widget.data === 'object' ? widget.data : {};
+
+  if (normalizedId === 'song') {
+    return JSON.stringify({
+      spotifyUrl: data.spotifyUrl || '',
+      spotifyUri: data.spotifyUri || '',
+      songName: data.songName || '',
+      durationLabel: data.durationLabel || '',
+      coverUrl: data.coverUrl || ''
+    });
+  }
 
   if (normalizedId === 'note' || normalizedTitle.includes('little note') || normalizedTitle.includes('smol note')) {
     return JSON.stringify({
@@ -1958,8 +2069,46 @@ async function incrementMissYouWidget() {
   widget.data.countsByUser[activeUserId] = (widget.data.countsByUser[activeUserId] || 0) + 1;
   widget.data.lastResetDate = getTodayDateKey();
 
-  renderWidgets();
+  refreshMissYouWidgetDom(widget);
   queueMissYouWidgetSave();
+}
+
+function bindMissYouWidgetButtons(root) {
+  root.querySelectorAll('[data-miss-you-widget-id]').forEach((btn) => {
+    ['mousedown', 'pointerdown'].forEach((eventName) => {
+      btn.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+    });
+
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (btn.hasAttribute('disabled')) return;
+      incrementMissYouWidget();
+    });
+  });
+}
+
+function refreshMissYouWidgetDom(widget) {
+  const matchingWidgets = Array.from(document.querySelectorAll('.widget')).filter((widgetEl) => {
+    const renderedId = widgetEl.dataset.widgetSourceId || widgetEl.dataset.widgetId || '';
+    return renderedId === widget.id;
+  });
+
+  if (!matchingWidgets.length) {
+    renderWidgets();
+    return;
+  }
+
+  matchingWidgets.forEach((widgetEl) => {
+    const content = widgetEl.querySelector('.widget-content');
+    if (!content) return;
+
+    content.innerHTML = getWidgetContent(widget);
+    bindMissYouWidgetButtons(content);
+  });
 }
 
 async function queueMissYouWidgetSave() {
@@ -2373,7 +2522,8 @@ async function loadWidgets(options = {}) {
         x: savedWidget.x ?? defaultWidget.x,
         y: savedWidget.y ?? defaultWidget.y,
         data: savedWidget.data ?? defaultWidget.data,
-        content: savedWidget.content ?? defaultWidget.content
+        content: savedWidget.content ?? defaultWidget.content,
+        updated_at: savedWidget.updated_at ?? defaultWidget.updated_at
       };
 
       const normalizedId = String(mergedWidget.id || '').toLowerCase().trim();
@@ -2444,12 +2594,18 @@ async function loadWidgets(options = {}) {
       }
 
       if (isSweetReminderWidget) {
-        const reminderChanged = mergedWidget.content !== defaultWidget.content;
+        const reminderChanged =
+          mergedWidget.content !== defaultWidget.content;
 
         if (reminderChanged) {
           mergedWidget.content = defaultWidget.content;
           widgetsNeedingNormalization.push(mergedWidget);
         }
+      }
+
+      if (normalizedId === 'photo-pin-right' && mergedWidget.title !== defaultWidget.title) {
+        mergedWidget.title = defaultWidget.title;
+        widgetsNeedingNormalization.push(mergedWidget);
       }
 
       return mergedWidget;
@@ -2465,6 +2621,8 @@ async function loadWidgets(options = {}) {
       await saveWidgetToSupabase(widget, { recordHistory: false });
     }
   }
+
+  refreshNotificationsFromCurrentData(render);
 
   if (render) {
     renderWidgets();
@@ -2766,24 +2924,7 @@ function renderWidgets() {
     }
 
     if (normalizedId === 'miss-you') {
-      el.querySelectorAll('.widget-miss-you-btn').forEach((btn) => {
-        btn.addEventListener('mousedown', (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-        });
-
-        btn.addEventListener('pointerdown', (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-        });
-
-        btn.addEventListener('click', async (event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          if (btn.hasAttribute('disabled')) return;
-          incrementMissYouWidget();
-        });
-      });
+      bindMissYouWidgetButtons(el);
     }
 
     if (editBtn && isEditable && !isVirtualWidget) {
@@ -2977,6 +3118,7 @@ function openWidgetEditor(widgetId) {
     widgetPopupTitle.textContent = `edit ${widget.title}`;
     saveWidgetBtn.style.display = 'none';
     setHeaderWidgetSaveVisibility(true);
+    setWidgetPopupLikeButton(widget);
 
     widgetEditorFields.innerHTML = `
       <div class="song-editor-layout">
@@ -3079,7 +3221,7 @@ function openWidgetEditor(widgetId) {
     setHeaderWidgetSaveVisibility(false);
 
     const itemsHtml = items.map((item) => `
-      <div class="date-edit-item" data-date-id="${item.id}" style="border:1px solid var(--border);border-radius:16px;padding:12px;background:rgba(255,250,253,0.92);">
+      <div class="date-edit-item" data-date-id="${item.id}">
         <div style="font-weight:700;margin-bottom:8px;">${item.title}</div>
         <div style="font-size:0.88rem;opacity:0.75;margin-bottom:10px;">${item.date}</div>
         <div style="display:flex;justify-content:flex-end;">
@@ -3156,15 +3298,19 @@ function openWidgetEditor(widgetId) {
     saveWidgetBtn.style.display = 'none';
     setHeaderWidgetSaveVisibility(false);
 
-    const itemsHtml = items.map((item) => `
-      <div class="wishlist-item-row">
+    const itemsHtml = items.map((item, index) => `
+      <div class="wishlist-item-row" data-wish-id="${item.id}">
         <div class="wishlist-item-main">
           <button class="toggle-wish-btn" type="button" data-wish-id="${item.id}">
             ${item.done ? '☑' : '☐'}
           </button>
           <div class="wishlist-item-text${item.done ? ' is-done' : ''}">${item.text}</div>
         </div>
-        <button class="delete-wish-btn" type="button" data-wish-id="${item.id}">delete</button>
+        <div class="wishlist-item-actions">
+          <button class="reorder-wish-btn" type="button" data-wish-id="${item.id}" data-wish-direction="up" aria-label="move wishlist item up" ${index === 0 ? 'disabled' : ''}>↑</button>
+          <button class="reorder-wish-btn" type="button" data-wish-id="${item.id}" data-wish-direction="down" aria-label="move wishlist item down" ${index === items.length - 1 ? 'disabled' : ''}>↓</button>
+          <button class="delete-wish-btn" type="button" data-wish-id="${item.id}">delete</button>
+        </div>
       </div>
     `).join('');
 
@@ -3177,7 +3323,7 @@ function openWidgetEditor(widgetId) {
           <button class="soft-btn" id="addWishBtn" type="button">add item</button>
         </div>
 
-        <div style="margin-top:8px;display:grid;gap:10px;">
+        <div class="wishlist-editor-list">
           ${itemsHtml || `<div class="small-note">nothing on the wishlist yet ♡</div>`}
         </div>
       </div>
@@ -3222,6 +3368,36 @@ function openWidgetEditor(widgetId) {
         renderWidgets();
         openWidgetEditor('wishlist');
         showMessage('wishlist item deleted ♡');
+      });
+    });
+
+    document.querySelectorAll('.reorder-wish-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        if (btn.hasAttribute('disabled')) return;
+
+        const wishId = btn.dataset.wishId;
+        const direction = btn.dataset.wishDirection;
+        const currentRow = btn.closest('.wishlist-item-row');
+        const list = currentRow?.closest('.wishlist-editor-list');
+        const swapRow = direction === 'up' ? currentRow?.previousElementSibling : currentRow?.nextElementSibling;
+        const previousRects = getWishlistEditorRowRects(list);
+
+        if (!reorderWishlistItem(widget, wishId, direction)) return;
+
+        if (list && currentRow && swapRow?.classList.contains('wishlist-item-row')) {
+          if (direction === 'up') {
+            list.insertBefore(currentRow, swapRow);
+          } else {
+            list.insertBefore(swapRow, currentRow);
+          }
+
+          syncWishlistEditorReorderButtons(list);
+          animateWishlistEditorRows(list, previousRects);
+        }
+
+        await saveWidgetToSupabase(widget);
+        renderWidgets();
+        showMessage('wishlist updated ♡');
       });
     });
 
@@ -3560,6 +3736,7 @@ async function saveWidgetChanges() {
     getWidgetLikeContentSignature(widget) !== beforeLikeContentSignature
   ) {
     widget.data.likes = [];
+    widget.data.likeTimestamps = {};
   }
 
   const afterSaveState = JSON.stringify({
@@ -3626,6 +3803,7 @@ async function saveWidgetToSupabase(widget, options = {}) {
     recordWidgetHistory(widget);
   }
 
+  widget.updated_at = payload.updated_at;
   return true;
 }
 
@@ -3650,7 +3828,6 @@ async function toggleWidgetWishlistItem(widgetId, wishId) {
 
   await saveWidgetToSupabase(widget);
   renderWidgets();
-  // if the wishlist editor is open, refresh it so the editor list matches the widget
   if (widgetPopup?.classList.contains('open') && editingWidgetId === 'wishlist') {
     openWidgetEditor('wishlist');
   }
@@ -3849,7 +4026,6 @@ function renderTimeline() {
       renderEmojiPicker();
       renderGifPicker();
       switchStickerTab('type');
-      stickerInput.focus();
     });
   });
   renderPlacedStickers();
@@ -3891,8 +4067,14 @@ function getDropBodyFromTarget(target) {
 }
 
 function switchStickerTab(nextTab) {
+  let activeTabButton = null;
+
   document.querySelectorAll('.sticker-tab').forEach((button) => {
-    button.classList.toggle('active', button.dataset.stickerTab === nextTab);
+    const isActive = button.dataset.stickerTab === nextTab;
+    button.classList.toggle('active', isActive);
+    if (isActive) {
+      activeTabButton = button;
+    }
   });
 
   const typePanel = document.getElementById('stickerTypePanel');
@@ -3913,7 +4095,6 @@ function switchStickerTab(nextTab) {
 
   if (nextTab === 'type') {
     renderTypedStickerPreview();
-    stickerInput.focus();
   }
 
   if (nextTab === 'gif') {
@@ -3926,6 +4107,12 @@ function switchStickerTab(nextTab) {
     }
     renderGifPicker();
   }
+
+  activeTabButton?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'nearest',
+    inline: 'center'
+  });
 }
 
 function renderEmojiPicker() {
@@ -4074,7 +4261,7 @@ function renderTypedStickerPreview() {
   const hasValue = Boolean(typedValue);
 
   typedStickerPreviewWrap.hidden = !hasValue;
-  typedStickerPreview.textContent = typedValue;
+  typedStickerPreview.textContent = 'click & drag';
   typedStickerPreview.setAttribute(
     'aria-label',
     hasValue ? `use typed sticker ${typedValue}` : 'typed sticker preview'
@@ -4886,9 +5073,16 @@ function summarizeWidgetHistory(widget) {
 function recordWidgetHistory(widget) {
   try {
     const existing = getWidgetHistoryEntries(widget.id);
+    const summary = summarizeWidgetHistory(widget);
+    const previousEntry = existing[0];
+
+    if (previousEntry?.summary === summary && previousEntry?.title === (widget.title || '')) {
+      return;
+    }
+
     const nextEntry = {
       savedAt: new Date().toISOString(),
-      summary: summarizeWidgetHistory(widget),
+      summary,
       title: widget.title || '',
       side: widget.side || '',
       x: widget.x ?? null,
@@ -4932,7 +5126,7 @@ function openWidgetHistory(widgetId) {
         ${historyEntries.map((entry) => `
           <div class="widget-history-item">
             <div class="widget-history-time">${formatEntryDate(entry.savedAt)}</div>
-            <div class="widget-history-summary">${entry.summary || 'widget update'}</div>
+            <div class="widget-history-summary">${escapeHtml(entry.summary || 'widget update')}</div>
           </div>
         `).join('')}
       </div>
@@ -5123,6 +5317,7 @@ function getNotificationTypeLabel(type) {
   if (type === 'comment') return 'comment';
   if (type === 'post_like') return 'like';
   if (type === 'comment_like') return 'comment like';
+  if (type === 'widget_like') return 'widget like';
   if (type === 'sticker') return 'sticker';
   return 'update';
 }
@@ -5180,6 +5375,19 @@ function focusPost(postId, options = {}) {
   }
 }
 
+function focusWidget(widgetId) {
+  if (!widgetId) return;
+
+  const target = Array.from(document.querySelectorAll('.widget[data-widget-id], .widget[data-widget-source-id]'))
+    .find((widgetEl) => widgetEl.dataset.widgetId === widgetId || widgetEl.dataset.widgetSourceId === widgetId);
+
+  if (!target) return;
+
+  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  target.classList.add('post-highlight');
+  window.setTimeout(() => target.classList.remove('post-highlight'), 1400);
+}
+
 function renderNotifications() {
   if (!notificationsList || !notificationsBtn || !notificationsBadge) return;
 
@@ -5209,6 +5417,7 @@ function renderNotifications() {
           class="notification-item${isUnread ? ' is-unread' : ''}"
           type="button"
           data-notification-post-id="${item.postId || ''}"
+          data-notification-widget-id="${item.widgetId || ''}"
           data-notification-open-comments="${item.openComments ? 'true' : 'false'}"
         >
           <div class="notification-topline">
@@ -5224,15 +5433,25 @@ function renderNotifications() {
   notificationsList.querySelectorAll('.notification-item').forEach((button) => {
     button.addEventListener('click', () => {
       const postId = button.dataset.notificationPostId;
+      const widgetId = button.dataset.notificationWidgetId;
       const openComments = button.dataset.notificationOpenComments === 'true';
 
       closeNotificationsPanel();
 
       if (postId) {
         focusPost(postId, { openComments });
+      } else if (widgetId) {
+        focusWidget(widgetId);
       }
     });
   });
+}
+
+function getWidgetNotificationName(widget) {
+  const normalizedId = String(widget?.id || '').toLowerCase().trim();
+  if (normalizedId === 'song') return 'now playing';
+  if (normalizedId === 'note') return 'smol note';
+  return String(widget?.title || 'a widget').trim() || 'a widget';
 }
 
 function buildNotifications({
@@ -5240,6 +5459,7 @@ function buildNotifications({
   commentsData = [],
   likesData = [],
   stickersData = [],
+  widgetsData = widgets,
   profilesData = [],
   render = true
 }) {
@@ -5339,6 +5559,33 @@ function buildNotifications({
     });
   });
 
+  (widgetsData || []).forEach((widget) => {
+    if (!isLikeableWidget(widget)) return;
+
+    normalizeWidgetLikesData(widget);
+    const likeTimestamps = getWidgetLikeTimestamps(widget);
+    const widgetName = getWidgetNotificationName(widget);
+
+    getWidgetLikeUserIds(widget).forEach((userId) => {
+      if (!userId || userId === myUserId) return;
+
+      const createdAt = likeTimestamps[userId] || '';
+      if (!createdAt) return;
+
+      const actorProfile = profileById.get(userId);
+      const actorName = actorProfile?.nickname || actorProfile?.username || 'someone';
+
+      nextNotifications.push({
+        id: `widget-like:${widget.id}:${userId}`,
+        type: 'widget_like',
+        created_at: createdAt,
+        widgetId: widget.id,
+        openComments: false,
+        message: `${actorName} liked ${widgetName}`
+      });
+    });
+  });
+
   notifications = nextNotifications.sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
@@ -5347,6 +5594,38 @@ function buildNotifications({
   if (render) {
     renderNotifications();
   }
+}
+
+function refreshNotificationsFromCurrentData(render = true) {
+  buildNotifications({
+    ...notificationSourceData,
+    widgetsData: widgets,
+    render
+  });
+}
+
+function syncPopupScrollLock() {
+  const hasOpenPopup = Boolean(document.querySelector('.popup.open'));
+
+  if (hasOpenPopup) {
+    if (!document.body.classList.contains('popup-scroll-locked')) {
+      popupScrollLockTop = window.scrollY || window.pageYOffset || 0;
+      document.documentElement.classList.add('popup-scroll-locked');
+      document.body.classList.add('popup-scroll-locked');
+    }
+    return;
+  }
+
+  if (!document.body.classList.contains('popup-scroll-locked')) {
+    return;
+  }
+
+  document.documentElement.classList.remove('popup-scroll-locked');
+  document.body.classList.remove('popup-scroll-locked');
+  if (popupScrollLockTop) {
+    window.scrollTo(0, popupScrollLockTop);
+  }
+  popupScrollLockTop = 0;
 }
 
 let popupPointerStartedInsideCard = false;
@@ -5361,6 +5640,19 @@ document.querySelectorAll('.popup-card').forEach((card) => {
     });
   });
 });
+
+document.querySelectorAll('.popup').forEach((popupEl) => {
+  const observer = new MutationObserver(() => {
+    syncPopupScrollLock();
+  });
+
+  observer.observe(popupEl, {
+    attributes: true,
+    attributeFilter: ['class']
+  });
+});
+
+syncPopupScrollLock();
 
 window.addEventListener('pointerup', () => {
   requestAnimationFrame(() => {
@@ -6026,11 +6318,20 @@ async function loadPosts(options = {}) {
     };
   });
 
+  notificationSourceData = {
+    postsData: postsData || [],
+    commentsData: commentsData || [],
+    likesData: likesData || [],
+    stickersData: stickersData || [],
+    profilesData: profilesData || []
+  };
+
   buildNotifications({
     postsData: postsData || [],
     commentsData: commentsData || [],
     likesData: likesData || [],
     stickersData: stickersData || [],
+    widgetsData: widgets,
     profilesData: profilesData || [],
     render
   });
@@ -6213,6 +6514,7 @@ function mergeWidgetFromSavedRow(widget, savedRow) {
   widget.y = savedRow.y ?? widget.y;
   widget.data = savedRow.data ?? widget.data;
   widget.content = savedRow.content ?? widget.content;
+  widget.updated_at = savedRow.updated_at ?? widget.updated_at;
 }
 
 async function toggleWidgetLike(widgetId) {
@@ -6229,6 +6531,7 @@ async function toggleWidgetLike(widgetId) {
   if (!widget || !isLikeableWidget(widget)) return;
 
   let previousLikes = getWidgetLikeUserIds(widget);
+  let previousLikeTimestamps = getWidgetLikeTimestamps(widget);
 
   pendingWidgetLikeIds.add(widgetId);
 
@@ -6240,11 +6543,23 @@ async function toggleWidgetLike(widgetId) {
 
     normalizeWidgetLikesData(widget);
     previousLikes = getWidgetLikeUserIds(widget);
+    previousLikeTimestamps = {
+      ...getWidgetLikeTimestamps(widget)
+    };
 
     const wasLiked = previousLikes.includes(user.id);
     widget.data.likes = wasLiked
       ? previousLikes.filter((likedUserId) => likedUserId !== user.id)
       : [...previousLikes, user.id];
+    widget.data.likeTimestamps = {
+      ...getWidgetLikeTimestamps(widget)
+    };
+
+    if (wasLiked) {
+      delete widget.data.likeTimestamps[user.id];
+    } else {
+      widget.data.likeTimestamps[user.id] = new Date().toISOString();
+    }
 
     renderWidgets();
 
@@ -6260,13 +6575,15 @@ async function toggleWidgetLike(widgetId) {
     console.error(error);
     widget.data = {
       ...(widget.data && typeof widget.data === 'object' ? widget.data : {}),
-      likes: previousLikes
+      likes: previousLikes,
+      likeTimestamps: previousLikeTimestamps
     };
     renderWidgets();
     showMessage(error.message || 'could not update widget like ♡');
   } finally {
     pendingWidgetLikeIds.delete(widgetId);
     syncWidgetLikeButton(widgetId);
+    refreshNotificationsFromCurrentData();
   }
 }
 

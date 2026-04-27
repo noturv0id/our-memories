@@ -59,6 +59,12 @@
         overflow: hidden;
       }
 
+      html.popup-scroll-locked,
+      body.popup-scroll-locked {
+        overflow: hidden;
+        overscroll-behavior: none;
+      }
+
       body.app-booting .popup.open,
       body.app-booting .message {
         opacity: 0;
@@ -703,6 +709,7 @@
       html[data-theme='dark'] .delete-comment-btn,
       html[data-theme='dark'] .delete-reply-btn,
       html[data-theme='dark'] .delete-wish-btn,
+      html[data-theme='dark'] .reorder-wish-btn,
       html[data-theme='dark'] .delete-date-btn,
       html[data-theme='dark'] .sticker-delete-btn,
       html[data-theme='dark'] .sticker-undo-btn,
@@ -722,6 +729,12 @@
       html[data-theme='dark'] .wishlist-item-row {
         background: rgba(41, 28, 47, 0.94);
         border-color: var(--border-2);
+      }
+
+      html[data-theme='dark'] .date-edit-item {
+        background: rgba(41, 28, 47, 0.94);
+        border-color: var(--border-2);
+        color: var(--text);
       }
 
       html[data-theme='dark'] .toggle-wish-btn,
@@ -1923,7 +1936,8 @@
         background: #ffe9f2;
       }
 
-      .delete-wish-btn {
+      .delete-wish-btn,
+      .reorder-wish-btn {
         border: 1px solid var(--border-2);
         background: #fff1f7;
         color: var(--text);
@@ -1936,7 +1950,18 @@
         transition: all 0.2s ease;
       }
 
-      .delete-wish-btn:hover {
+      .reorder-wish-btn {
+        min-width: 30px;
+        padding-inline: 8px;
+      }
+
+      .reorder-wish-btn:disabled {
+        opacity: 0.38;
+        cursor: default;
+      }
+
+      .delete-wish-btn:hover,
+      .reorder-wish-btn:not(:disabled):hover {
         transform: translateY(-1px);
         opacity: 0.85;
       }
@@ -1952,11 +1977,37 @@
         gap: 10px;
       }
 
+      .wishlist-editor-list {
+        margin-top: 8px;
+        display: grid;
+        gap: 10px;
+      }
+
+      .wishlist-editor-list .wishlist-item-row {
+        will-change: transform;
+      }
+
+      .date-edit-item {
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 12px;
+        background: rgba(255, 250, 253, 0.92);
+        color: var(--text);
+      }
+
       .wishlist-item-main {
         display: flex;
         align-items: center;
         gap: 10px;
         min-width: 0;
+      }
+
+      .wishlist-item-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        flex: 0 0 auto;
       }
 
       .toggle-wish-btn {
@@ -2533,21 +2584,27 @@
   display: flex;
   gap: 10px;
   margin-bottom: 16px;
+  padding-block: 6px 4px;
+  scroll-padding-inline: 12px;
 }
 
 .sticker-tab {
+  min-height: 42px;
   border: 1px solid var(--border-2);
-  background: linear-gradient(90deg, rgba(246, 214, 226, 0.52), rgba(255, 250, 253, 0.94), rgba(246, 214, 226, 0.52));
-  background-size: 220% 100%;
-  animation: skeletonShimmer 1.45s ease-in-out infinite;
+  background: rgba(255, 250, 253, 0.94);
   color: var(--text-soft);
   border-radius: 999px;
   padding: 8px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-family: 'Quicksand', 'Noto Sans', 'Noto Sans Symbols 2', 'Noto Sans Batak', 'Segoe UI Symbol', sans-serif;
   font-size: 0.88rem;
   font-weight: 700;
+  line-height: 1.1;
   cursor: pointer;
-  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: none;
+  transition: transform 0.2s ease, background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .sticker-tab:hover {
@@ -2556,28 +2613,43 @@
 
 .sticker-tab.active {
   background: var(--header);
-  animation: none;
   color: var(--text);
-  box-shadow: 0 8px 18px rgba(198, 133, 160, 0.14);
+  border-color: var(--border-2);
 }
 
 html[data-theme='dark'] .sticker-tab {
-  background: linear-gradient(90deg, rgba(86, 58, 79, 0.7), rgba(58, 39, 53, 0.96), rgba(86, 58, 79, 0.7));
-  background-size: 220% 100%;
+  background: #2f2036;
   color: var(--text-soft);
+  box-shadow: none;
 }
 
 html[data-theme='dark'] .sticker-tab.active {
   background: var(--header);
   color: var(--text);
+  box-shadow: none;
 }
 
 .sticker-panel {
   display: none;
+  opacity: 0;
+  transform: translateY(6px);
 }
 
 .sticker-panel.active {
   display: block;
+  animation: stickerPanelIn 0.26s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes stickerPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .typed-sticker-input-wrap {
@@ -2585,7 +2657,7 @@ html[data-theme='dark'] .sticker-tab.active {
 }
 
 .typed-sticker-input {
-  padding-right: 96px;
+  padding-right: 150px;
 }
 
 .typed-sticker-preview-wrap {
@@ -2603,12 +2675,13 @@ html[data-theme='dark'] .sticker-tab.active {
   color: var(--text);
   border-radius: 14px;
   min-height: 34px;
-  min-width: 52px;
+  min-width: 122px;
   max-width: 100%;
   padding: 4px 10px;
   font-family: 'Quicksand', 'Noto Sans', 'Noto Sans Symbols 2', 'Noto Sans Batak', 'Segoe UI Symbol', sans-serif;
-  font-size: 0.92rem;
+  font-size: 0.82rem;
   font-weight: 700;
+  white-space: nowrap;
   box-shadow: 0 6px 14px rgba(198, 133, 160, 0.12);
   cursor: grab;
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
@@ -2943,6 +3016,54 @@ html[data-theme='dark'] .typed-sticker-preview:focus-visible {
         100% {
           opacity: 1;
           transform: scale(1);
+        }
+      }
+
+      @media (min-width: 981px) and (max-width: 1320px) {
+        .page {
+          padding: 24px;
+        }
+
+        .layout {
+          max-width: 980px;
+          grid-template-columns: minmax(0, 1fr);
+          gap: 28px;
+        }
+
+        .timeline {
+          order: 1;
+        }
+
+        #leftZone {
+          order: 2;
+        }
+
+        #rightZone {
+          order: 3;
+        }
+
+        .widget-zone {
+          position: static;
+          min-height: 0;
+          height: auto;
+          max-height: none;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(240px, 1fr));
+          gap: 18px;
+        }
+
+        .widget {
+          position: relative;
+          inset: auto !important;
+          left: auto !important;
+          top: auto !important;
+          width: 100%;
+          margin: 0;
+        }
+
+        .widget:hover,
+        .post:hover {
+          transform: none;
         }
       }
 
@@ -3403,9 +3524,9 @@ html[data-theme='dark'] .typed-sticker-preview:focus-visible {
         }
 
         .popup-header {
-          padding: 12px 14px;
-          align-items: flex-start;
-          flex-wrap: wrap;
+          padding: 10px 14px;
+          align-items: center;
+          flex-wrap: nowrap;
         }
 
         .popup-title {
@@ -3415,10 +3536,11 @@ html[data-theme='dark'] .typed-sticker-preview:focus-visible {
         }
 
         .popup-header-actions {
-          width: 100%;
+          width: auto;
           justify-content: flex-end;
-          flex-wrap: wrap;
+          flex-wrap: nowrap;
           gap: 8px;
+          margin-left: auto;
         }
 
         #widgetPopup .popup-header {
@@ -3463,20 +3585,15 @@ html[data-theme='dark'] .typed-sticker-preview:focus-visible {
         .sticker-tabs {
           gap: 8px;
           overflow-x: auto;
-          padding-bottom: 4px;
+          padding: 8px 2px 8px;
+          scroll-padding-inline: 14px;
         }
 
         .sticker-tab {
           flex: 0 0 auto;
           white-space: nowrap;
           padding: 8px 12px;
-          background: linear-gradient(90deg, rgba(244, 205, 220, 0.72), rgba(255, 252, 254, 0.98), rgba(244, 205, 220, 0.72));
-          background-size: 220% 100%;
-          animation: skeletonShimmer 1.45s ease-in-out infinite;
-        }
-
-        .sticker-tab.active {
-          animation: none;
+          background: rgba(255, 250, 253, 0.94);
         }
 
         .gif-search-bar {
@@ -3541,8 +3658,8 @@ html[data-theme='dark'] .typed-sticker-preview:focus-visible {
         }
 
         html[data-theme='dark'] .sticker-tab {
-          background: linear-gradient(90deg, rgba(96, 65, 88, 0.82), rgba(66, 44, 61, 0.98), rgba(96, 65, 88, 0.82));
-          background-size: 220% 100%;
+          background: #2f2036;
+          box-shadow: none;
         }
 
         html[data-theme='dark'] .mobile-view-btn.active {
@@ -3561,7 +3678,7 @@ html[data-theme='dark'] .typed-sticker-preview:focus-visible {
 
         html[data-theme='dark'] .sticker-tab.active {
           background: var(--header);
-          animation: none;
           color: var(--text);
+          box-shadow: none;
         }
       }
