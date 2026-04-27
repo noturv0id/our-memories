@@ -3079,7 +3079,7 @@ html[data-theme='dark'] .typed-sticker-preview:focus-visible {
         }
       }
 
-      @media (min-width: 721px) and (max-width: 1440px) {
+      @media (min-width: 721px) and (max-width: 1500px) {
         .page {
           padding: 24px 24px 104px;
         }
