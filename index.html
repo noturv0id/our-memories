@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="our memories" />
+    <meta name="apple-mobile-web-app-title" content="˗ˏˋ ⁺ ‧ ₊ ˚ ཐི ⋆ TOTO&DODO ⋆ ཋྀ ˚ ₊ ‧ ⁺ ˎˊ˗" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#fff8fb" />
     <link rel="icon" type="image/png" sizes="853x853" href="./icon.png" />
@@ -42,8 +42,7 @@
       <header class="toolbar" id="appToolbar" data-auth-state="checking">
         <div class="toolbar-inner toolbar-live">
           <div class="brand">
-            <div class="brand-icons"><span>♡</span><span>✦</span><span>🎀</span></div>
-            <div class="site-title">our memories ♡</div>
+            <div class="site-title">˗ˏˋ ⁺ ‧ ₊ ˚ ཐི ⋆ TOTO&DODO ⋆ ཋྀ ˚ ₊ ‧ ⁺ ˎˊ˗</div>
           </div>
 
           <div class="quote-pill">⊹˚₊ forever and always ₊˚⊹</div>
@@ -81,7 +80,6 @@
             >
               <span class="theme-toggle-icon" aria-hidden="true">☾</span>
             </button>
-            <button class="soft-btn" type="button" id="toggleWidgetsBtn" aria-pressed="false">widgets</button>
             <button class="soft-btn" type="button" id="profileBtn">profile</button>
           </div>
         </div>
@@ -94,7 +92,6 @@
           <div class="toolbar-skeleton-actions">
             <span class="skeleton-button toolbar-skeleton-btn toolbar-skeleton-btn-inbox"></span>
             <span class="skeleton-button toolbar-skeleton-btn toolbar-skeleton-btn-toggle"></span>
-            <span class="skeleton-button toolbar-skeleton-btn"></span>
             <span class="skeleton-button toolbar-skeleton-btn"></span>
           </div>
         </div>
@@ -199,6 +196,22 @@
       </div>
     </div>
 
+    <div class="popup" id="deleteEntryPopup">
+      <div class="popup-card confirm-popup-card">
+        <div class="popup-header">
+          <h3 class="popup-title">delete entry?</h3>
+          <button class="soft-btn" id="cancelDeleteEntryHeaderBtn" type="button">close</button>
+        </div>
+        <div class="popup-body">
+          <p class="confirm-popup-text">this entry will be deleted forever.</p>
+          <div class="popup-actions confirm-popup-actions">
+            <button class="soft-btn" id="cancelDeleteEntryBtn" type="button">cancel</button>
+            <button class="soft-btn danger-btn" id="confirmDeleteEntryBtn" type="button">delete</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
 
 
     <div class="popup" id="widgetPopup">
@@ -207,8 +220,8 @@
           <h3 class="popup-title" id="widgetPopupTitle">edit widget</h3>
           <div class="popup-header-actions">
             <button class="soft-btn widget-clear-history-btn" id="clearWidgetHistoryBtn" type="button">clear history</button>
-            <button class="soft-btn" id="headerSaveWidgetBtn" type="button" hidden>save</button>
             <button class="post-btn like-btn widget-like-btn widget-popup-like-btn" id="widgetPopupLikeBtn" type="button" hidden aria-label="like widget" aria-pressed="false"></button>
+            <button class="soft-btn" id="headerSaveWidgetBtn" type="button" hidden>save</button>
             <button class="soft-btn" id="closeWidgetPopup" type="button">close</button>
           </div>
         </div>
@@ -262,7 +275,7 @@
               />
               <button class="soft-btn" id="gifSearchBtn" type="button">search</button>
             </div>
-            <div class="small-note" id="gifSearchStatus">search public gifs or pick one below ♡</div>
+            <div class="small-note" id="gifSearchStatus"></div>
             <div class="gif-picker-grid" id="gifPickerGrid"></div>
             <div class="gif-attribution">Powered by GIPHY</div>
           </div>

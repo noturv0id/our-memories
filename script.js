@@ -22,7 +22,7 @@ const PLACED_GIF_SIZE_STORAGE_KEY = 'placedGifStickerSizes';
 const PLACED_STICKER_POSITION_STORAGE_KEY = 'placedStickerPositions';
 const DEFAULT_GIF_STICKER_SIZE = 72;
 const MIN_GIF_STICKER_SIZE = 44;
-const MAX_GIF_STICKER_SIZE = 160;
+const MAX_GIF_STICKER_SIZE = 200;
 let hasRenderedEmojiPicker = false;
 let hasRenderedGifPicker = false;
 let selectedGifStickerUrl = '';
@@ -30,16 +30,6 @@ let gifSearchResults = [];
 let gifSearchQuery = '';
 let gifSearchLoading = false;
 let activeStickerSize = null;
-const STICKER_GIF_LIBRARY = [
-  { label: 'heart bear', url: 'https://media.giphy.com/media/3oriO0OEd9QIDdllqo/giphy.gif' },
-  { label: 'cute cat', url: 'https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif' },
-  { label: 'pink hearts', url: 'https://media.giphy.com/media/l4FGpP4lxGGgK5CBW/giphy.gif' },
-  { label: 'happy dance', url: 'https://media.giphy.com/media/ICOgUNjpvO0PC/giphy.gif' },
-  { label: 'love letter', url: 'https://media.giphy.com/media/26BRv0ThflsHCqDrG/giphy.gif' },
-  { label: 'sparkly hug', url: 'https://media.giphy.com/media/5GoVLqeAOo6PK/giphy.gif' },
-  { label: 'blushing heart', url: 'https://media.giphy.com/media/LYJLrM8VkBmyCKOd1O/giphy.gif' },
-  { label: 'sleepy bunny', url: 'https://media.giphy.com/media/9Y5BbDSkSTiY8/giphy.gif' }
-];
 const STICKER_PICKER_GROUPS = [
   {
     label: 'hearts + symbols',
@@ -135,7 +125,7 @@ const STICKER_PICKER_GROUPS = [
     }
   },
 
-  {
+{
   id: '. ݁₊ ⊹ . ݁ dates ݁ . ⊹ ₊ ݁.',
   title: '⊹ ࣪ ˖important dates⊹ ࣪ ˖',
   side: 'right',
@@ -537,13 +527,13 @@ let knownProfiles = [];
 const visibleGifStickerControlTimers = new Map();
 const minimizedWidgetIds = new Set();
 const previousMobileWidgetRects = new Map();
-let allWidgetsHidden = false;
 let missYouSaveInFlight = false;
 let missYouSaveQueued = false;
        let currentCommentsPostId = null;
        let replyingToCommentId = null;
        let editingWidgetId = null;
        let editingPostId = null;
+       let pendingDeletePostId = null;
        let pendingWidgetDrag = null;
        let commentLikesEnabled = true;
        let currentUser = null;
@@ -569,7 +559,6 @@ const timelineEl = document.getElementById('timeline');
       const gifSearchBtn = document.getElementById('gifSearchBtn');
        const gifSearchStatus = document.getElementById('gifSearchStatus');
        const closeStickerPopup = document.getElementById('closeStickerPopup');
-      const toggleWidgetsBtn = document.getElementById('toggleWidgetsBtn');
        const appToolbar = document.getElementById('appToolbar');
       const newEntryBtn = document.getElementById('newEntryBtn');
       const notificationsMenu = document.getElementById('notificationsMenu');
@@ -597,6 +586,10 @@ const timelineEl = document.getElementById('timeline');
        const commentInput = document.getElementById('commentInput');
       const saveCommentBtn = document.getElementById('saveCommentBtn');
       const replyingToLabel = document.getElementById('replyingToLabel');
+      const deleteEntryPopup = document.getElementById('deleteEntryPopup');
+      const cancelDeleteEntryHeaderBtn = document.getElementById('cancelDeleteEntryHeaderBtn');
+      const cancelDeleteEntryBtn = document.getElementById('cancelDeleteEntryBtn');
+      const confirmDeleteEntryBtn = document.getElementById('confirmDeleteEntryBtn');
       const widgetPopup = document.getElementById('widgetPopup');
       const closeWidgetPopup = document.getElementById('closeWidgetPopup');
       const widgetPopupTitle = document.getElementById('widgetPopupTitle');
@@ -629,7 +622,7 @@ const timelineEl = document.getElementById('timeline');
 
         const siteTitleEl = document.querySelector('.site-title');
         if (siteTitleEl) {
-          siteTitleEl.textContent = 'our memories ♡';
+          siteTitleEl.textContent = '˗ˏˋ ⁺ ‧ ₊ ˚ ཐི ⋆ TOTO&DODO ⋆ ཋྀ ˚ ₊ ‧ ⁺ ˎˊ˗';
         }
 
         const quotePillEl = document.querySelector('.quote-pill');
@@ -1430,27 +1423,28 @@ function normalizeHexColor(value, fallback = '#ffffff') {
       }
 
       function createYouTubePreview(videoId, sourceUrl) {
-        const preview = document.createElement('a');
+        const preview = document.createElement('div');
         preview.className = 'link-preview youtube-preview';
-        preview.href = sourceUrl;
-        preview.target = '_blank';
-        preview.rel = 'noopener noreferrer';
+        preview.dataset.sourceUrl = sourceUrl;
 
-        const thumbnail = document.createElement('img');
-        thumbnail.className = 'youtube-preview-thumb';
-        thumbnail.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
-        thumbnail.alt = 'YouTube video preview';
-        thumbnail.loading = 'lazy';
+        const embedParams = new URLSearchParams({
+          rel: '0',
+          modestbranding: '1',
+          playsinline: '1'
+        });
+        if (window.location.origin && window.location.origin !== 'null') {
+          embedParams.set('origin', window.location.origin);
+        }
 
-        const play = document.createElement('span');
-        play.className = 'youtube-preview-play';
-        play.textContent = '▶';
+        const player = document.createElement('iframe');
+        player.className = 'youtube-preview-player';
+        player.src = `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?${embedParams.toString()}`;
+        player.title = 'YouTube video player';
+        player.loading = 'lazy';
+        player.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+        player.allowFullscreen = true;
 
-        const label = document.createElement('span');
-        label.className = 'youtube-preview-label';
-        label.textContent = 'Watch on YouTube';
-
-        preview.append(thumbnail, play, label);
+        preview.appendChild(player);
         return preview;
       }
 
@@ -2673,7 +2667,6 @@ function renderWidgets() {
   rightZone.innerHTML = '';
 
   ensureWidgetStackOrder();
-  syncToggleWidgetsButton();
 
   const isMobileWidgetOrderActive = isTabbedLayoutActive();
   const mobileRenderItems = isMobileWidgetOrderActive ? getMobileWidgetRenderItems() : null;
@@ -2761,7 +2754,6 @@ function renderWidgets() {
       isNoteWidget ? 'note' :
       normalizedId;
     const isMinimized = minimizedWidgetIds.has(widget.id);
-    const isHidden = allWidgetsHidden;
     const mobileOrderState = mobileWidgetOrderLookup.get(renderId);
     const canMoveWidgetUp = Boolean(mobileOrderState && mobileOrderState.index > 0);
     const canMoveWidgetDown = Boolean(
@@ -2772,7 +2764,6 @@ function renderWidgets() {
     const el = document.createElement('div');
     el.className = 'widget';
     el.classList.toggle('is-minimized', isMinimized);
-    el.classList.toggle('is-hidden-all', isHidden);
     el.dataset.widgetId = renderId;
     el.dataset.widgetSourceId = renderItem.sourceId;
     if (isStickerWidget) {
@@ -3035,17 +3026,6 @@ function renderWidgets() {
   renderStickerGrid();
 }
 
-function syncToggleWidgetsButton() {
-  if (!toggleWidgetsBtn) return;
-
-  toggleWidgetsBtn.textContent = allWidgetsHidden ? 'show all' : 'hide all';
-  toggleWidgetsBtn.setAttribute('aria-pressed', String(allWidgetsHidden));
-  toggleWidgetsBtn.setAttribute(
-    'aria-label',
-    allWidgetsHidden ? 'show all widgets' : 'hide all widgets'
-  );
-}
-
 function toggleWidgetMinimized(widgetId) {
   if (minimizedWidgetIds.has(widgetId)) {
     minimizedWidgetIds.delete(widgetId);
@@ -3053,11 +3033,6 @@ function toggleWidgetMinimized(widgetId) {
     minimizedWidgetIds.add(widgetId);
   }
 
-  renderWidgets();
-}
-
-function toggleAllWidgetsMinimized() {
-  allWidgetsHidden = !allWidgetsHidden;
   renderWidgets();
 }
 
@@ -3144,7 +3119,7 @@ function openWidgetEditor(widgetId) {
     `;
   } else if (normalizedId === 'song') {
     normalizeSongWidget(widget);
-    widgetPopupTitle.textContent = `edit ${widget.title}`;
+    widgetPopupTitle.textContent = widget.title;
     saveWidgetBtn.style.display = 'none';
     setHeaderWidgetSaveVisibility(true);
     setWidgetPopupLikeButton(widget);
@@ -3179,6 +3154,7 @@ function openWidgetEditor(widgetId) {
 
         <input id="widgetFieldSongCover" type="hidden" value="${escapeHtml(widget.data?.coverUrl || '')}" />
         <input id="widgetFieldSongUri" type="hidden" value="${escapeHtml(widget.data?.spotifyUri || '')}" />
+        <input id="widgetFieldSongName" type="hidden" value="${escapeHtml(widget.data?.songName || '')}" />
       </div>
     `;
 
@@ -3186,6 +3162,7 @@ function openWidgetEditor(widgetId) {
     const songDurationInput = document.getElementById('widgetFieldSongDuration');
     const songCoverInput = document.getElementById('widgetFieldSongCover');
     const songUriInput = document.getElementById('widgetFieldSongUri');
+    const songNameInput = document.getElementById('widgetFieldSongName');
     const fetchSpotifySongBtn = document.getElementById('fetchSpotifySongBtn');
     const songEditorPreview = document.getElementById('songEditorPreview');
 
@@ -3217,6 +3194,7 @@ function openWidgetEditor(widgetId) {
         if (spotifyUrlInput) spotifyUrlInput.value = spotifyData.spotifyUrl;
         if (songUriInput) songUriInput.value = spotifyData.spotifyUri;
         if (songCoverInput) songCoverInput.value = spotifyData.coverUrl;
+        if (songNameInput) songNameInput.value = spotifyData.songName;
         widget.data.songName = spotifyData.songName;
         if (songDurationInput && !songDurationInput.value.trim()) {
           songDurationInput.value = spotifyData.durationLabel;
@@ -3234,8 +3212,8 @@ function openWidgetEditor(widgetId) {
   } else if (normalizedId === 'note') {
     normalizeWidgetLikesData(widget);
     widgetPopupTitle.textContent = '⋆𐙚₊smol note˚⊹♡';
-    saveWidgetBtn.style.display = 'inline-flex';
-    setHeaderWidgetSaveVisibility(false);
+    saveWidgetBtn.style.display = 'none';
+    setHeaderWidgetSaveVisibility(true);
     setWidgetPopupLikeButton(widget);
 
     widgetEditorFields.innerHTML = `
@@ -3245,7 +3223,7 @@ function openWidgetEditor(widgetId) {
   } else if (normalizedId === 'dates') {
     const items = widget.data?.items || [];
 
-    widgetPopupTitle.textContent = 'important dates ♡';
+    widgetPopupTitle.textContent = '⊹ ࣪ ˖important dates⊹ ࣪ ˖';
     saveWidgetBtn.style.display = 'none';
     setHeaderWidgetSaveVisibility(false);
 
@@ -3323,7 +3301,7 @@ function openWidgetEditor(widgetId) {
   } else if (normalizedId === 'wishlist') {
     const items = getWishlistItemsInDisplayOrder(widget.data?.items || []);
 
-    widgetPopupTitle.textContent = 'wishlist ♡';
+    widgetPopupTitle.textContent = '𓂃˖˳·˖ ִֶָ ⋆wishlist⋆ ִֶָ˖·˳˖𓂃';
     saveWidgetBtn.style.display = 'none';
     setHeaderWidgetSaveVisibility(false);
 
@@ -3366,7 +3344,7 @@ function openWidgetEditor(widgetId) {
         const text = wishInput.value.trim();
 
         if (!text) {
-          showMessage('write something for the wishlist ♡');
+          showMessage('write something for the wishlist');
           return;
         }
 
@@ -3453,7 +3431,7 @@ function openWidgetEditor(widgetId) {
     widgetPopupTitle.textContent =
       normalizedId === 'photo-pin-right' ? '♡ pin it ⊹˚₊' : '₊˚⊹ pin it ♡';
     saveWidgetBtn.style.display = 'none';
-    setHeaderWidgetSaveVisibility(false);
+    setHeaderWidgetSaveVisibility(true);
     setWidgetPopupLikeButton(widget);
 
     const photoData = {
@@ -3515,7 +3493,6 @@ function openWidgetEditor(widgetId) {
           <button class="soft-btn photo-editor-tool-btn photo-editor-icon-btn" id="centerPhotoTextXBtn" type="button" title="center text horizontally" aria-label="center text horizontally">↔</button>
           <button class="soft-btn photo-editor-tool-btn" id="rotatePhotoBtn" type="button">rotate</button>
           <button class="soft-btn photo-editor-tool-btn" id="clearPhotoBtn" type="button">clear</button>
-          <button class="soft-btn photo-editor-tool-btn" id="savePhotoWidgetBtn" type="button">save</button>
         </div>
         <div class="photo-editor-preview${photoData.image ? ' has-image' : ''}" id="photoEditorPreview">
           ${photoData.image ? `
@@ -3540,7 +3517,6 @@ function openWidgetEditor(widgetId) {
     const centerPhotoTextXBtn = document.getElementById('centerPhotoTextXBtn');
     const rotateBtn = document.getElementById('rotatePhotoBtn');
     const clearPhotoBtn = document.getElementById('clearPhotoBtn');
-    const savePhotoWidgetBtn = document.getElementById('savePhotoWidgetBtn');
     let photoRotation = photoData.rotate;
     let textX = Math.max(0, Math.min(100, photoData.textX));
     let textY = Math.max(0, Math.min(100, photoData.textY));
@@ -3675,9 +3651,8 @@ function openWidgetEditor(widgetId) {
       updatePhotoPreview();
     });
 
-    savePhotoWidgetBtn?.addEventListener('click', saveWidgetChanges);
   } else {
-    widgetPopupTitle.textContent = `edit ${widget.title}`;
+    widgetPopupTitle.textContent = widget.title;
     widgetEditorFields.innerHTML = `<div class="small-note">this widget is not editable yet ♡</div>`;
     saveWidgetBtn.style.display = 'none';
     setHeaderWidgetSaveVisibility(false);
@@ -3740,6 +3715,7 @@ async function saveWidgetChanges() {
         : '';
     widget.data.durationLabel = document.getElementById('widgetFieldSongDuration')?.value.trim() || '';
     widget.data.coverUrl = document.getElementById('widgetFieldSongCover')?.value.trim() || '';
+    widget.data.songName = document.getElementById('widgetFieldSongName')?.value.trim() || '';
     widget.data.accent = Math.max(6, Math.min(94, Number(widget.data.accent) || 38));
   } else if (editingWidgetId === 'note') {
     if (!widget.data) widget.data = {};
@@ -3925,7 +3901,7 @@ function renderTimeline() {
     postEl.dataset.postId = post.id;
     postEl.innerHTML = `
       <div class="post-header">
-        <span>˚₊‧ post ❤︎‧₊˚ — ${formatEntryDate(post.created_at)}</span>
+        <span>˚₊‧ entry ❤︎‧₊˚ — ${formatEntryDate(post.created_at)}</span>
         ${post.isEdited ? `<span class="post-edited-badge">edited</span>` : ''}
       </div>
       <div class="post-body">
@@ -4026,8 +4002,8 @@ function renderTimeline() {
   });
 
   document.querySelectorAll('.delete-entry-btn').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      await deleteEntry(btn.dataset.postId);
+    btn.addEventListener('click', () => {
+      openDeleteEntryConfirmation(btn.dataset.postId);
     });
   });
 
@@ -4130,7 +4106,7 @@ function switchStickerTab(nextTab) {
     if (!gifSearchQuery && !gifSearchResults.length) {
       setGifSearchStatus(
         GIPHY_API_KEY
-          ? 'search public gifs or pick one below ♡'
+          ? ''
           : 'add your GIPHY API key in script.js to enable public search'
       );
     }
@@ -4208,22 +4184,16 @@ function renderEmojiPicker() {
 function renderGifPicker() {
   if (!gifPickerGrid) return;
   gifPickerGrid.innerHTML = '';
+  const recentGifStickers = getRecentGifStickers();
   const gifItems = gifSearchResults.length
     ? gifSearchResults
-    : [
-        ...getRecentGifStickers(),
-        ...STICKER_GIF_LIBRARY.filter(
-          (gifItem) => !getRecentGifStickers().some((recentItem) => recentItem.url === gifItem.url)
-        )
-      ];
+    : recentGifStickers;
 
   if (!gifSearchResults.length) {
     setGifSearchStatus(
-      getRecentGifStickers().length
+      recentGifStickers.length
         ? 'recently used gifs ♡'
-        : GIPHY_API_KEY
-          ? 'search public gifs or pick one below ♡'
-          : 'add your GIPHY API key in script.js to enable public search'
+        : ''
     );
   }
 
@@ -4290,7 +4260,8 @@ function renderTypedStickerPreview() {
   const hasValue = Boolean(typedValue);
 
   typedStickerPreviewWrap.hidden = !hasValue;
-  typedStickerPreview.textContent = 'click & drag';
+  typedStickerPreview.textContent = typedValue;
+  typedStickerPreview.dataset.hint = hasValue ? '' : 'click & drag';
   typedStickerPreview.setAttribute(
     'aria-label',
     hasValue ? `use typed sticker ${typedValue}` : 'typed sticker preview'
@@ -4306,7 +4277,7 @@ async function searchPublicGifs() {
 
   if (!query) {
     gifSearchResults = [];
-    setGifSearchStatus('search public gifs or pick one below ♡');
+    setGifSearchStatus('');
     renderGifPicker();
     return;
   }
@@ -4418,7 +4389,6 @@ async function searchPublicGifs() {
         if (isGifSticker(droppedSticker)) {
           const gifItem =
             gifSearchResults.find((item) => item.url === droppedSticker) ||
-            STICKER_GIF_LIBRARY.find((item) => item.url === droppedSticker) ||
             getRecentGifStickers().find((item) => item.url === droppedSticker) ||
             { label: 'gif sticker', url: droppedSticker };
           saveRecentGifSticker(gifItem);
@@ -4944,6 +4914,15 @@ if (typedStickerPreview) {
       commentsPopup.addEventListener('click', (event) => {
         if (event.target === commentsPopup && !popupPointerStartedInsideCard) {
           commentsPopup.classList.remove('open');
+        }
+      });
+
+      cancelDeleteEntryHeaderBtn?.addEventListener('click', closeDeleteEntryConfirmation);
+      cancelDeleteEntryBtn?.addEventListener('click', closeDeleteEntryConfirmation);
+      confirmDeleteEntryBtn?.addEventListener('click', confirmDeleteEntry);
+      deleteEntryPopup?.addEventListener('click', (event) => {
+        if (event.target === deleteEntryPopup) {
+          closeDeleteEntryConfirmation();
         }
       });
 
@@ -6444,6 +6423,43 @@ async function saveEntry() {
   await loadPosts();
 }
 
+function openDeleteEntryConfirmation(postId) {
+  if (!postId || !deleteEntryPopup) return;
+
+  pendingDeletePostId = postId;
+  if (confirmDeleteEntryBtn) {
+    confirmDeleteEntryBtn.disabled = false;
+    confirmDeleteEntryBtn.textContent = 'delete';
+  }
+  deleteEntryPopup.classList.add('open');
+}
+
+function closeDeleteEntryConfirmation() {
+  pendingDeletePostId = null;
+  if (deleteEntryPopup) {
+    deleteEntryPopup.classList.remove('open');
+  }
+  if (confirmDeleteEntryBtn) {
+    confirmDeleteEntryBtn.disabled = false;
+    confirmDeleteEntryBtn.textContent = 'delete';
+  }
+}
+
+async function confirmDeleteEntry() {
+  const postId = pendingDeletePostId;
+  if (!postId || !confirmDeleteEntryBtn) return;
+
+  confirmDeleteEntryBtn.disabled = true;
+  confirmDeleteEntryBtn.textContent = 'deleting...';
+  const deleted = await deleteEntry(postId);
+  if (deleted) {
+    closeDeleteEntryConfirmation();
+  } else {
+    confirmDeleteEntryBtn.disabled = false;
+    confirmDeleteEntryBtn.textContent = 'delete';
+  }
+}
+
 async function deleteEntry(postId) {
   const postEl = document.querySelector(`[data-post-id="${postId}"]`);
 
@@ -6462,12 +6478,13 @@ async function deleteEntry(postId) {
     console.error(error);
     showMessage(error.message);
     await loadPosts();
-    return;
+    return false;
   }
 
   unmarkPostAsEdited(postId);
   showMessage('entry deleted ♡');
   await loadPosts();
+  return true;
 }
 
 async function toggleLike(postId) {
@@ -6955,7 +6972,6 @@ if (saveProfileBtn) saveProfileBtn.addEventListener('click', saveProfile);
 if (logoutBtn) logoutBtn.addEventListener('click', logoutUser);
 if (saveEntryBtn) saveEntryBtn.addEventListener('click', saveEntry);
 if (saveCommentBtn) saveCommentBtn.addEventListener('click', saveComment);
-if (toggleWidgetsBtn) toggleWidgetsBtn.addEventListener('click', toggleAllWidgetsMinimized);
 if (themeToggle) themeToggle.addEventListener('click', toggleTheme);
 mobileViewButtons.forEach((button) => {
   button.addEventListener('click', () => {
