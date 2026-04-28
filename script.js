@@ -587,7 +587,6 @@ const timelineEl = document.getElementById('timeline');
       const saveCommentBtn = document.getElementById('saveCommentBtn');
       const replyingToLabel = document.getElementById('replyingToLabel');
       const deleteEntryPopup = document.getElementById('deleteEntryPopup');
-      const cancelDeleteEntryHeaderBtn = document.getElementById('cancelDeleteEntryHeaderBtn');
       const cancelDeleteEntryBtn = document.getElementById('cancelDeleteEntryBtn');
       const confirmDeleteEntryBtn = document.getElementById('confirmDeleteEntryBtn');
       const widgetPopup = document.getElementById('widgetPopup');
@@ -660,7 +659,7 @@ const timelineEl = document.getElementById('timeline');
 
         const stickerTitleEl = document.querySelector('#stickerPopup .popup-title');
         if (stickerTitleEl) {
-          stickerTitleEl.textContent = '✦ sticker box ♡';
+          stickerTitleEl.textContent = '˚୨୧⋆｡˚ ⋆reactions₍ᐢ. .ᐢ₎ ₊˚⊹♡';
         }
       }
 
@@ -1722,6 +1721,33 @@ function getTodayDateKey() {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+}
+
+function parseDisplayDate(value) {
+  const match = String(value || '').trim().match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+  if (!match) return '';
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return '';
+  }
+
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function formatDisplayDate(value) {
+  const match = String(value || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value || '';
+
+  return `${match[3]}/${match[2]}/${match[1]}`;
 }
 
 function formatDurationLabel(durationMs) {
@@ -3110,7 +3136,7 @@ function openWidgetEditor(widgetId) {
   editingWidgetId = normalizedId;
 
   if (normalizedId === 'love') {
-    widgetPopupTitle.textContent = "｡ ₊°༺ together for ༻°₊ ｡:";
+    widgetPopupTitle.textContent = "｡ ₊°༺ together for ༻°₊ ｡";
     saveWidgetBtn.style.display = 'none';
     setHeaderWidgetSaveVisibility(false);
 
@@ -3230,7 +3256,7 @@ function openWidgetEditor(widgetId) {
     const itemsHtml = items.map((item) => `
       <div class="date-edit-item" data-date-id="${item.id}">
         <div style="font-weight:700;margin-bottom:8px;">${item.title}</div>
-        <div style="font-size:0.88rem;opacity:0.75;margin-bottom:10px;">${item.date}</div>
+        <div style="font-size:0.88rem;opacity:0.75;margin-bottom:10px;">${formatDisplayDate(item.date)}</div>
         <div style="display:flex;justify-content:flex-end;">
           <button class="delete-date-btn" type="button" data-date-id="${item.id}">delete</button>
         </div>
@@ -3243,7 +3269,7 @@ function openWidgetEditor(widgetId) {
         <input class="popup-input" id="dateTitleInput" type="text" placeholder="birthday" />
 
         <label class="popup-label">date</label>
-        <input class="popup-input" id="dateValueInput" type="date" />
+        <input class="popup-input" id="dateValueInput" type="text" inputmode="numeric" placeholder="dd/mm/yyyy" />
 
         <div class="popup-actions" style="margin-top:4px;">
           <button class="soft-btn" id="addDateBtn" type="button">add date</button>
@@ -3263,10 +3289,10 @@ function openWidgetEditor(widgetId) {
         const dateInput = document.getElementById('dateValueInput');
 
         const title = titleInput.value.trim();
-        const date = dateInput.value.trim();
+        const date = parseDisplayDate(dateInput.value);
 
         if (!title || !date) {
-          showMessage('add a title and date ♡');
+          showMessage('add a title and date as dd/mm/yyyy ♡');
           return;
         }
 
@@ -3941,7 +3967,7 @@ function renderTimeline() {
             aria-label="open stickers"
             aria-pressed="false"
           >
-            <span class="post-btn-icon" aria-hidden="true">✦</span>
+            <span class="post-btn-icon" aria-hidden="true">☻</span>
             <span class="post-btn-label">stickers</span>
           </button>
           ${isOwner ? `<button class="post-btn edit-entry-btn" type="button" data-post-id="${post.id}" aria-label="edit entry"><span class="post-btn-icon" aria-hidden="true">✎</span><span class="post-btn-label">edit</span></button>` : ''}
@@ -4917,7 +4943,6 @@ if (typedStickerPreview) {
         }
       });
 
-      cancelDeleteEntryHeaderBtn?.addEventListener('click', closeDeleteEntryConfirmation);
       cancelDeleteEntryBtn?.addEventListener('click', closeDeleteEntryConfirmation);
       confirmDeleteEntryBtn?.addEventListener('click', confirmDeleteEntry);
       deleteEntryPopup?.addEventListener('click', (event) => {
