@@ -5,8 +5,8 @@ const supabaseClient = supabase.createClient(
   SUPABASE_URL,
   SUPABASE_ANON_KEY
 );
-const ANNIVERSARY_WRAPPER_URL =
-  'https://noturv0id.github.io/our-memories/anniversary-wrapper.html?v=20260426-8';
+const ANNIVERSARY_WRAPPER_BASE_URL =
+  'https://noturv0id.github.io/our-memories/anniversary-wrapper.html?v=20260502-1';
 const STICKER_MIME_TYPE = 'application/x-our-memories-sticker';
 const ENTRY_IMAGE_BUCKET = 'profile-pictures';
 const GIPHY_API_KEY = '34udc7WiSDjXKrRbb9UgwcD2piNXT3uO';
@@ -17,6 +17,16 @@ const WEATHER_WIDGET_LOCATIONS = [
   { label: 'Hateen, Kuwait', latitude: 29.28233, longitude: 48.02874 },
   { label: 'Dammam, Saudi Arabia', latitude: 26.43442, longitude: 50.10326 }
 ];
+
+function getCurrentTheme() {
+  return document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
+}
+
+function getAnniversaryWrapperUrl() {
+  const url = new URL(ANNIVERSARY_WRAPPER_BASE_URL);
+  url.searchParams.set('theme', getCurrentTheme());
+  return url.href;
+}
 const RECENT_GIF_STORAGE_KEY = 'recentGifStickers';
 const PLACED_GIF_SIZE_STORAGE_KEY = 'placedGifStickerSizes';
 const PLACED_STICKER_POSITION_STORAGE_KEY = 'placedStickerPositions';
@@ -198,14 +208,34 @@ const STICKER_PICKER_GROUPS = [
       <div style="display:grid;gap:12px;">
          <a
            class="soft-btn widget-miss-you-btn"
-           href="${ANNIVERSARY_WRAPPER_URL}"
+           href="${getAnniversaryWrapperUrl()}"
            target="_blank"
            style="justify-self:center;text-decoration:none;display:inline-flex;align-items:center;"
          >
-           open website
+           click me
          </a>
       </div>
     `,
+  },
+
+  {
+    id: 'entry-preview',
+    title: '⊹˚₊ ♡ TOTO’S POEMS ♡ ₊˚⊹',
+    side: 'right',
+    x: 10,
+    y: 470,
+    data: {
+      buttonLabel: 'open entries',
+      entries: [
+        {
+          id: 'entry-preview-1',
+          title: 'for you ♡',
+          text: 'write the entries you want this widget to preview here ♡',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        }
+      ]
+    }
   },
 
   {
@@ -323,7 +353,7 @@ const STICKER_PICKER_GROUPS = [
 
       const MOBILE_WIDGET_LAYOUT = {
         right: ['photo-pin', 'photo-pin-right', 'miss-you', 'song', 'note'],
-        left: ['wishlist', 'weather', 'dates', 'reminder-copy', 'love']
+        left: ['wishlist', 'weather', 'dates', 'reminder-copy', 'entry-preview-copy', 'love']
       };
 
       function getWidgetMobileTabOrders(widget) {
@@ -358,6 +388,7 @@ const STICKER_PICKER_GROUPS = [
         if (normalizedId === 'miss-you' || normalizedTitle.includes('miss you counter')) return 'miss-you';
         if (normalizedId === 'love') return 'love';
         if (normalizedId === 'sweet-reminder') return 'reminder';
+        if (normalizedId === 'entry-preview') return 'entry-preview';
         if (normalizedId === 'wishlist' || normalizedTitle.includes('wishlist')) return 'wishlist';
         if (normalizedId === 'dates' || normalizedTitle.includes('important dates')) return 'dates';
         if (normalizedId === 'note' || normalizedTitle.includes('little note') || normalizedTitle.includes('smol note')) return 'note';
@@ -368,7 +399,11 @@ const STICKER_PICKER_GROUPS = [
       }
 
       function getMobileWidgetForRole(role) {
-        const lookupRole = role === 'reminder-copy' ? 'reminder' : role;
+        const lookupRole = role === 'reminder-copy'
+          ? 'reminder'
+          : role === 'entry-preview-copy'
+            ? 'entry-preview'
+            : role;
         return widgets.find((widget) => getWidgetMobileRole(widget) === lookupRole);
       }
 
@@ -378,9 +413,9 @@ const STICKER_PICKER_GROUPS = [
             const widget = getMobileWidgetForRole(role);
             if (!widget) return [];
 
-            const isReminderCopy = role === 'reminder-copy';
+            const isVirtualCopy = role === 'reminder-copy' || role === 'entry-preview-copy';
             return {
-              widget: isReminderCopy
+              widget: isVirtualCopy
                 ? {
                     ...widget,
                     id: `${widget.id}-mobile-left`,
@@ -388,11 +423,11 @@ const STICKER_PICKER_GROUPS = [
                     zIndex: widget.zIndex || 1
                   }
                 : widget,
-              renderId: isReminderCopy ? `${widget.id}-mobile-left` : widget.id,
+              renderId: isVirtualCopy ? `${widget.id}-mobile-left` : widget.id,
               sourceId: widget.id,
               side,
               order: getWidgetMobileTabOrder(widget, side, order),
-              isVirtual: isReminderCopy
+              isVirtual: isVirtualCopy
             };
           })
         );
@@ -597,6 +632,14 @@ const timelineEl = document.getElementById('timeline');
        const widgetEditorFields = document.getElementById('widgetEditorFields');
        const saveWidgetBtn = document.getElementById('saveWidgetBtn');
       const clearWidgetHistoryBtn = document.getElementById('clearWidgetHistoryBtn');
+      const entryPreviewPopup = document.getElementById('entryPreviewPopup');
+      const closeEntryPreviewPopup = document.getElementById('closeEntryPreviewPopup');
+      const shuffleEntryPreviewPopup = document.getElementById('shuffleEntryPreviewPopup');
+      const editEntryPreviewPopup = document.getElementById('editEntryPreviewPopup');
+      const entryPreviewTitle = document.getElementById('entryPreviewTitle');
+      const entryPreviewList = document.getElementById('entryPreviewList');
+      let activeEntryPreviewWidgetId = '';
+      let activeEntryPreviewEntries = [];
       let lastScrollY = window.scrollY || 0;
       const MOBILE_VIEW_STORAGE_KEY = 'ourMemoriesMobileView';
       const MAC_TABBED_LAYOUT_QUERY = '(min-width: 721px) and (max-width: 1500px)';
@@ -698,7 +741,7 @@ const timelineEl = document.getElementById('timeline');
       }
 
       function shouldUseLaunchSplash() {
-        return isMobileLayoutActive();
+        return true;
       }
 
       function syncMobileViewButtons() {
@@ -1387,10 +1430,78 @@ function normalizeHexColor(value, fallback = '#ffffff') {
         const urls = new Set();
 
         postTextEl.querySelectorAll('a[href]').forEach((link) => {
-          urls.add(link.href);
+          if (/^https?:/i.test(link.href)) {
+            urls.add(link.href);
+          }
         });
 
         return [...urls];
+      }
+
+      function cleanDetectedUrl(url) {
+        return String(url || '').replace(/[),.;!?]+$/g, '');
+      }
+
+      function linkifyPlainUrls(root) {
+        if (!root) return;
+
+        const urlPattern = /\bhttps?:\/\/[^\s<>"')\]]+/gi;
+        const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+        const textNodes = [];
+
+        while (walker.nextNode()) {
+          const node = walker.currentNode;
+          const parent = node.parentElement;
+          if (!parent || parent.closest('a, button, input, textarea, script, style')) {
+            continue;
+          }
+          if (urlPattern.test(node.textContent || '')) {
+            textNodes.push(node);
+          }
+          urlPattern.lastIndex = 0;
+        }
+
+        textNodes.forEach((textNode) => {
+          const text = textNode.textContent || '';
+          const fragment = document.createDocumentFragment();
+          let lastIndex = 0;
+          let match;
+
+          urlPattern.lastIndex = 0;
+          while ((match = urlPattern.exec(text)) !== null) {
+            const rawUrl = match[0];
+            const cleanUrl = cleanDetectedUrl(rawUrl);
+            const trailingText = rawUrl.slice(cleanUrl.length);
+
+            if (match.index > lastIndex) {
+              fragment.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+            }
+
+            try {
+              const parsedUrl = new URL(cleanUrl);
+              const link = document.createElement('a');
+              link.href = parsedUrl.href;
+              link.target = '_blank';
+              link.rel = 'noopener noreferrer';
+              link.textContent = cleanUrl;
+              fragment.appendChild(link);
+            } catch {
+              fragment.appendChild(document.createTextNode(cleanUrl));
+            }
+
+            if (trailingText) {
+              fragment.appendChild(document.createTextNode(trailingText));
+            }
+
+            lastIndex = match.index + rawUrl.length;
+          }
+
+          if (lastIndex < text.length) {
+            fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+          }
+
+          textNode.replaceWith(fragment);
+        });
       }
 
       function getYouTubeVideoId(url) {
@@ -1421,7 +1532,99 @@ function normalizeHexColor(value, fallback = '#ffffff') {
         return '';
       }
 
+      function getLinkPreviewDetails(url) {
+        const parsedUrl = new URL(url);
+        const hostname = parsedUrl.hostname.replace(/^www\./, '');
+        const pathParts = decodeURIComponent(parsedUrl.pathname)
+          .split('/')
+          .filter(Boolean);
+        const rawTitle = pathParts[pathParts.length - 1] || hostname;
+        const title = rawTitle
+          .replace(/\.[a-z0-9]{2,5}$/i, '')
+          .replace(/[-_]+/g, ' ')
+          .trim();
+
+        return {
+          hostname,
+          title: title || hostname,
+          faviconUrl: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(parsedUrl.hostname)}&sz=64`
+        };
+      }
+
+      function createGenericLinkPreview(sourceUrl) {
+        const preview = document.createElement('a');
+        preview.className = 'link-preview generic-link-preview';
+        preview.href = sourceUrl;
+        preview.target = '_blank';
+        preview.rel = 'noopener noreferrer';
+        preview.dataset.sourceUrl = sourceUrl;
+
+        let details;
+        try {
+          details = getLinkPreviewDetails(sourceUrl);
+        } catch {
+          details = {
+            hostname: sourceUrl,
+            title: sourceUrl,
+            faviconUrl: ''
+          };
+        }
+
+        preview.innerHTML = `
+          <span class="generic-link-preview-art" aria-hidden="true">
+            <span class="generic-link-preview-icon">
+              ${details.faviconUrl ? `<img src="${escapeHtml(details.faviconUrl)}" alt="" loading="lazy" decoding="async" />` : '↗'}
+            </span>
+          </span>
+          <span class="generic-link-preview-text">
+            <span class="generic-link-preview-title">${escapeHtml(details.title)}</span>
+            <span class="generic-link-preview-url">${escapeHtml(details.hostname)}</span>
+          </span>
+        `;
+
+        return preview;
+      }
+
+      function canUseYouTubeEmbed() {
+        return ['http:', 'https:'].includes(window.location.protocol)
+          && Boolean(window.location.origin)
+          && window.location.origin !== 'null';
+      }
+
+      function getYouTubeWatchUrl(videoId, sourceUrl) {
+        return sourceUrl || `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+      }
+
+      function createYouTubeLinkPreview(videoId, sourceUrl) {
+        const preview = document.createElement('a');
+        preview.className = 'link-preview youtube-preview youtube-preview-link';
+        preview.href = getYouTubeWatchUrl(videoId, sourceUrl);
+        preview.target = '_blank';
+        preview.rel = 'noopener noreferrer';
+        preview.dataset.sourceUrl = sourceUrl;
+        preview.setAttribute('aria-label', 'watch video on YouTube');
+
+        preview.innerHTML = `
+          <img
+            class="youtube-preview-thumbnail"
+            src="https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/hqdefault.jpg"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
+          <span class="youtube-preview-vignette" aria-hidden="true"></span>
+          <span class="youtube-preview-play" aria-hidden="true">▶</span>
+          <span class="youtube-preview-label">Watch on YouTube</span>
+        `;
+
+        return preview;
+      }
+
       function createYouTubePreview(videoId, sourceUrl) {
+        if (!canUseYouTubeEmbed()) {
+          return createYouTubeLinkPreview(videoId, sourceUrl);
+        }
+
         const preview = document.createElement('div');
         preview.className = 'link-preview youtube-preview';
         preview.dataset.sourceUrl = sourceUrl;
@@ -1439,7 +1642,7 @@ function normalizeHexColor(value, fallback = '#ffffff') {
         player.className = 'youtube-preview-player';
         player.src = `https://www.youtube.com/embed/${encodeURIComponent(videoId)}?${embedParams.toString()}`;
         player.title = 'YouTube video player';
-        player.loading = 'lazy';
+        player.referrerPolicy = 'strict-origin-when-cross-origin';
         player.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
         player.allowFullscreen = true;
 
@@ -1450,22 +1653,42 @@ function normalizeHexColor(value, fallback = '#ffffff') {
       function renderLinkPreviews(postTextEl, previewContainer) {
         if (!previewContainer) return;
 
+        linkifyPlainUrls(postTextEl);
         previewContainer.innerHTML = '';
         const seenVideos = new Set();
-        const previews = getUrlsFromPostText(postTextEl)
+        const seenGenericUrls = new Set();
+        const previewItems = getUrlsFromPostText(postTextEl)
           .map((url) => ({
             url,
             videoId: getYouTubeVideoId(url)
           }))
-          .filter((item) => item.videoId && !seenVideos.has(item.videoId))
           .slice(0, 3);
 
-        previews.forEach((item) => {
-          seenVideos.add(item.videoId);
-          previewContainer.appendChild(createYouTubePreview(item.videoId, item.url));
+        previewItems.forEach((item) => {
+          if (item.videoId) {
+            if (seenVideos.has(item.videoId)) return;
+            seenVideos.add(item.videoId);
+            previewContainer.appendChild(createYouTubePreview(item.videoId, item.url));
+            return;
+          }
+
+          if (seenGenericUrls.has(item.url)) return;
+          seenGenericUrls.add(item.url);
+          previewContainer.appendChild(createGenericLinkPreview(item.url));
         });
 
-        previewContainer.hidden = previews.length === 0;
+        previewContainer.hidden = !previewContainer.children.length;
+      }
+
+      function renderTextWithLinkPreviews(textEl, previewContainer, text) {
+        if (!textEl) return;
+
+        textEl.textContent = text || '';
+        renderLinkPreviews(textEl, previewContainer);
+        textEl.querySelectorAll('a').forEach((link) => {
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+        });
       }
 
       function htmlToPlainText(html) {
@@ -1485,22 +1708,73 @@ function normalizeHexColor(value, fallback = '#ffffff') {
 
          document.body.classList.remove('no-quill');
 
+         const Font = window.Quill.import('formats/font');
+         Font.whitelist = [
+           'quicksand',
+           'fredoka',
+           'noto-sans',
+           'nunito',
+           'serif',
+           'lora',
+           'merriweather',
+           'playfair',
+           'caveat',
+           'dancing',
+           'monospace'
+         ];
+         window.Quill.register(Font, true);
+
+         const SizeStyle = window.Quill.import('attributors/style/size');
+         SizeStyle.whitelist = ['12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '40px'];
+         window.Quill.register(SizeStyle, true);
+
+         const addEntryColorSelector = () => {
+           const toolbar = entryQuill?.getModule('toolbar')?.container;
+           if (!toolbar || toolbar.querySelector('#entryTextColorPicker')) return;
+
+           const colorGroup = document.createElement('span');
+           colorGroup.className = 'ql-formats entry-color-format';
+           colorGroup.innerHTML = `
+             <input
+               class="photo-color-trigger entry-color-trigger"
+               id="entryTextColorPicker"
+               type="color"
+               value="#6d4456"
+               aria-label="choose text color"
+               title="choose text color"
+             />
+           `;
+
+           const formatGroups = toolbar.querySelectorAll('.ql-formats');
+           const insertBefore = formatGroups[2] || formatGroups[formatGroups.length - 1];
+           insertBefore?.before(colorGroup);
+
+           const colorInput = colorGroup.querySelector('#entryTextColorPicker');
+           colorInput?.addEventListener('input', () => {
+             const color = normalizeHexColor(colorInput.value, '#6d4456');
+             colorInput.value = color;
+             entryQuill?.format('color', color);
+             entryQuill?.focus();
+           });
+         };
+
          entryQuill = new window.Quill(entryEditor, {
            theme: 'snow',
           placeholder: 'write something ♡',
           modules: {
             toolbar: [
-              [{ font: [] }],
-              [{ header: [false, 2, 3] }],
+              [{ font: ['quicksand', 'fredoka', 'noto-sans', 'nunito', 'serif', 'lora', 'merriweather', 'playfair', 'caveat', 'dancing', 'monospace'] }],
+              [{ size: ['12px', '14px', '16px', '18px', '20px', '24px', '28px', '32px', '40px'] }],
               ['bold', 'italic', 'underline'],
-              [{ color: [] }, { background: [] }],
               [{ list: 'ordered' }, { list: 'bullet' }],
               ['blockquote'],
               ['link'],
-              ['clean']
+             ['clean']
             ]
            }
          });
+
+         addEntryColorSelector();
        }
 
        function clearEntryComposer() {
@@ -2140,6 +2414,143 @@ function bindMissYouWidgetButtons(root) {
   });
 }
 
+function isTotoUser() {
+  const profileName = `${currentProfile?.nickname || ''} ${currentProfile?.username || ''}`.toLowerCase();
+  const email = String(currentUser?.email || '').toLowerCase();
+  const identity = `${profileName} ${email}`;
+
+  if (identity.includes('dodo')) return false;
+  return identity.includes('toto');
+}
+
+function createEntryPreviewId() {
+  return crypto.randomUUID ? crypto.randomUUID() : `entry-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function normalizeEntryPreviewWidgetData(widget) {
+  if (!widget) return { buttonLabel: 'open entries', entries: [] };
+
+  const rawData = widget.data && typeof widget.data === 'object' && !Array.isArray(widget.data)
+    ? widget.data
+    : {};
+  const now = new Date().toISOString();
+  const rawEntries = Array.isArray(rawData.entries) ? rawData.entries : [];
+  let entries = rawEntries
+    .map((entry) => ({
+      id: String(entry?.id || createEntryPreviewId()).trim() || createEntryPreviewId(),
+      title: String(entry?.title || '').trim(),
+      text: String(entry?.text || '').trim(),
+      createdAt: String(entry?.createdAt || entry?.created_at || now),
+      updatedAt: String(entry?.updatedAt || entry?.updated_at || entry?.createdAt || now)
+    }))
+    .filter((entry) => entry.title || entry.text);
+
+  if (!entries.length && (rawData.entryTitle || rawData.entryText)) {
+    entries = [{
+      id: String(rawData.entryId || createEntryPreviewId()),
+      title: String(rawData.entryTitle || 'for you ♡').trim(),
+      text: String(rawData.entryText || '').trim(),
+      createdAt: String(rawData.entryCreatedAt || now),
+      updatedAt: String(rawData.entryUpdatedAt || now)
+    }];
+  }
+
+  return {
+    ...rawData,
+    buttonLabel: String(rawData.buttonLabel || 'open entries').trim() || 'open entries',
+    entries
+  };
+}
+
+function getEntryPreviewEntries(widget) {
+  return normalizeEntryPreviewWidgetData(widget).entries;
+}
+
+function shuffleEntryPreviewEntries(entries) {
+  const shuffled = [...entries];
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [shuffled[swapIndex], shuffled[index]];
+  }
+
+  return shuffled;
+}
+
+function renderEntryPreviewEntries(entries) {
+  if (!entryPreviewList) return;
+
+  entryPreviewList.innerHTML = '';
+
+  if (!entries.length) {
+    entryPreviewList.innerHTML = '<div class="small-note">no entries here yet ♡</div>';
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const post = document.createElement('article');
+    post.className = 'post entry-preview-post';
+    post.innerHTML = `
+      <div class="post-header">
+        <span>˚₊‧ ${escapeHtml(entry.title || 'for dodo')} ❤︎‧₊˚</span>
+        <span>${formatEntryDate(entry.updatedAt || entry.createdAt)}</span>
+      </div>
+      <div class="post-body">
+        <div class="post-text ql-editor"></div>
+        <div class="link-preview-list" hidden></div>
+      </div>
+    `;
+
+    const textEl = post.querySelector('.post-text');
+    const previewEl = post.querySelector('.link-preview-list');
+    textEl.innerHTML = entry.text ? toSafeHtmlFromPlainText(entry.text) : '<p>empty entry ♡</p>';
+    renderLinkPreviews(textEl, previewEl);
+    textEl.querySelectorAll('a').forEach((link) => {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    });
+    entryPreviewList.appendChild(post);
+  });
+}
+
+function openEntryPreviewWidget(widgetId) {
+  const normalizedWidgetId = String(widgetId || '').replace(/-mobile-left$/, '');
+  const widget = widgets.find((item) => item.id === widgetId || item.id === normalizedWidgetId);
+  if (!widget || !entryPreviewPopup || !entryPreviewTitle || !entryPreviewList) return;
+
+  activeEntryPreviewWidgetId = widget.id;
+  activeEntryPreviewEntries = getEntryPreviewEntries(widget);
+
+  entryPreviewTitle.textContent = widget.title || 'little entries ♡';
+  if (editEntryPreviewPopup) {
+    editEntryPreviewPopup.hidden = !isTotoUser();
+  }
+  if (shuffleEntryPreviewPopup) {
+    shuffleEntryPreviewPopup.hidden = activeEntryPreviewEntries.length < 2;
+  }
+
+  renderEntryPreviewEntries(activeEntryPreviewEntries);
+
+  entryPreviewPopup.classList.add('open');
+}
+
+function bindEntryPreviewWidgetButtons(root) {
+  root.querySelectorAll('[data-entry-preview-widget-id]').forEach((btn) => {
+    ['mousedown', 'pointerdown'].forEach((eventName) => {
+      btn.addEventListener(eventName, (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+    });
+
+    btn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openEntryPreviewWidget(btn.dataset.entryPreviewWidgetId);
+    });
+  });
+}
+
 function refreshMissYouWidgetDom(widget) {
   const matchingWidgets = Array.from(document.querySelectorAll('.widget')).filter((widgetEl) => {
     const renderedId = widgetEl.dataset.widgetSourceId || widgetEl.dataset.widgetId || '';
@@ -2455,6 +2866,24 @@ if (normalizedId === 'miss-you' || normalizedTitle.includes('miss you counter'))
   `;
 }
 
+if (normalizedId === 'entry-preview' || normalizedId === 'entry-preview-mobile-left') {
+  const data = normalizeEntryPreviewWidgetData(widget);
+  const buttonLabel = escapeHtml(data.buttonLabel || 'open entry');
+  const previewWidgetId = normalizedId === 'entry-preview-mobile-left' ? 'entry-preview' : widget.id;
+
+  return `
+    <div class="gift-style-widget">
+      <button
+        class="soft-btn widget-miss-you-btn gift-style-widget-btn"
+        type="button"
+        data-entry-preview-widget-id="${previewWidgetId}"
+      >
+        ${buttonLabel}
+      </button>
+    </div>
+  `;
+}
+
 if (normalizedId.startsWith('photo-pin') || normalizedTitle.includes('pinned photo') || normalizedTitle.includes('pinned') || normalizedTitle.includes('pin it')) {
   normalizeWidgetLikesData(widget);
   const photoData = widget.data || {};
@@ -2522,13 +2951,22 @@ function isLegacyAnniversaryUrl(url) {
   );
 }
 
+function isAnniversaryWrapperUrl(url) {
+  return String(url || '').toLowerCase().includes('anniversary-wrapper.html');
+}
+
 function upgradeLegacyAnniversaryLinks(root = document) {
   root.querySelectorAll?.('a[href]').forEach((link) => {
-    if (!isLegacyAnniversaryUrl(link.getAttribute('href')) && !isLegacyAnniversaryUrl(link.href)) {
+    if (
+      !isLegacyAnniversaryUrl(link.getAttribute('href')) &&
+      !isLegacyAnniversaryUrl(link.href) &&
+      !isAnniversaryWrapperUrl(link.getAttribute('href')) &&
+      !isAnniversaryWrapperUrl(link.href)
+    ) {
       return;
     }
 
-    link.href = ANNIVERSARY_WRAPPER_URL;
+    link.href = getAnniversaryWrapperUrl();
     link.target = '_blank';
     link.rel = 'noopener noreferrer';
   });
@@ -2761,6 +3199,8 @@ function renderWidgets() {
       normalizedId.includes('stickers') || normalizedTitle.includes('stickers');
     const isPhotoWidget =
       normalizedId.startsWith('photo-pin') || normalizedTitle.includes('pinned photo') || normalizedTitle.includes('pinned') || normalizedTitle.includes('pin it');
+    const isEntryPreviewWidget = normalizedId === 'entry-preview' || renderItem.sourceId === 'entry-preview';
+    const canEditEntryPreviewWidget = !isEntryPreviewWidget || isTotoUser();
 
     const hasHistory =
       normalizedId === 'song' ||
@@ -2768,15 +3208,18 @@ function renderWidgets() {
 
     const isEditable =
       ['song', 'memories', 'love'].includes(normalizedId) ||
+      (isEntryPreviewWidget && canEditEntryPreviewWidget) ||
       isNoteWidget ||
       isDatesWidget ||
       isWishlistWidget ||
       isPhotoWidget;
+    const showHeaderEditButton = isEditable && !isEntryPreviewWidget;
 
     const editTargetId =
       isDatesWidget ? 'dates' :
       isWishlistWidget ? 'wishlist' :
       isPhotoWidget ? widget.id :
+      isEntryPreviewWidget ? 'entry-preview' :
       isNoteWidget ? 'note' :
       normalizedId;
     const isMinimized = minimizedWidgetIds.has(widget.id);
@@ -2841,10 +3284,8 @@ function renderWidgets() {
             ${isMinimized ? '+' : '–'}
           </button>
           ${hasHistory && !isVirtualWidget ? `<button class="widget-history-btn" type="button" data-widget-history-id="${widget.id}">🕘</button>` : ''}
-          ${!isVirtualWidget ? `
-            <button class="widget-edit-btn" type="button" data-widget-id="${widget.id}">
-              ${isEditable ? '✎' : '✦'}
-            </button>
+          ${!isVirtualWidget && (!isEntryPreviewWidget || canEditEntryPreviewWidget) ? `
+            ${showHeaderEditButton ? `<button class="widget-edit-btn" type="button" data-widget-id="${widget.id}">✎</button>` : ''}
           ` : ''}
         </div>
       </div>
@@ -2973,6 +3414,10 @@ function renderWidgets() {
       bindMissYouWidgetButtons(el);
     }
 
+    if (isEntryPreviewWidget) {
+      bindEntryPreviewWidgetButtons(el);
+    }
+
     if (editBtn && isEditable && !isVirtualWidget) {
       editBtn.addEventListener('mousedown', (event) => {
         event.preventDefault();
@@ -3060,54 +3505,6 @@ function toggleWidgetMinimized(widgetId) {
   }
 
   renderWidgets();
-}
-
-function renderWidgetSkeletons() {
-  const skeletons = widgets.map((widget) => {
-    const normalizedId = String(widget.id || '').toLowerCase().trim();
-    const normalizedTitle = String(widget.title || '').toLowerCase();
-
-    let lines = 2;
-
-    if (normalizedId === 'song') {
-      lines = 3;
-    } else if (normalizedId === 'love') {
-      lines = 2;
-    } else if (
-      normalizedId.includes('wishlist') ||
-      normalizedTitle.includes('wishlist') ||
-      normalizedId.includes('stickers') ||
-      normalizedTitle.includes('stickers') ||
-      normalizedTitle.includes('important dates')
-    ) {
-      lines = 3;
-    }
-
-    return {
-      side: widget.side,
-      x: widget.x ?? 0,
-      y: widget.y ?? 0,
-      lines
-    };
-  });
-
-  leftZone.innerHTML = '';
-  rightZone.innerHTML = '';
-
-  skeletons.forEach((item) => {
-    const node = document.createElement('div');
-    node.className = 'widget widget-skeleton';
-    node.style.left = `${item.x}px`;
-    node.style.top = `${item.y}px`;
-    node.innerHTML = `
-      <div class="skeleton-block skeleton-header"></div>
-      <div class="skeleton-widget-body">
-        ${Array.from({ length: item.lines }).map(() => '<span class="skeleton-line"></span>').join('')}
-      </div>
-    `;
-
-    (item.side === 'left' ? leftZone : rightZone).appendChild(node);
-  });
 }
 
 function openWidgetEditor(widgetId) {
@@ -3305,7 +3702,7 @@ function openWidgetEditor(widgetId) {
           date
         });
 
-        await saveWidgetToSupabase(widget);
+        await saveWidgetToSupabase(widget, { notifyUpdate: true });
         renderWidgets();
         openWidgetEditor('dates');
         showMessage('date added ♡');
@@ -3318,7 +3715,7 @@ function openWidgetEditor(widgetId) {
 
         widget.data.items = (widget.data.items || []).filter((item) => item.id !== dateId);
 
-        await saveWidgetToSupabase(widget);
+        await saveWidgetToSupabase(widget, { notifyUpdate: true });
         renderWidgets();
         openWidgetEditor('dates');
         showMessage('date deleted ♡');
@@ -3384,7 +3781,7 @@ function openWidgetEditor(widgetId) {
           order: getNextWishlistOrder(widget.data.items)
         });
 
-        await saveWidgetToSupabase(widget);
+        await saveWidgetToSupabase(widget, { notifyUpdate: true });
         renderWidgets();
         openWidgetEditor('wishlist');
         showMessage('added to wishlist ♡');
@@ -3397,7 +3794,7 @@ function openWidgetEditor(widgetId) {
 
         widget.data.items = (widget.data.items || []).filter((item) => item.id !== wishId);
 
-        await saveWidgetToSupabase(widget);
+        await saveWidgetToSupabase(widget, { notifyUpdate: true });
         renderWidgets();
         openWidgetEditor('wishlist');
         showMessage('wishlist item deleted ♡');
@@ -3428,7 +3825,7 @@ function openWidgetEditor(widgetId) {
           animateWishlistEditorRows(list, previousRects);
         }
 
-        await saveWidgetToSupabase(widget);
+        await saveWidgetToSupabase(widget, { notifyUpdate: true });
         renderWidgets();
         showMessage('wishlist updated ♡');
       });
@@ -3442,11 +3839,116 @@ function openWidgetEditor(widgetId) {
           item.id === wishId ? { ...item, done: !item.done } : item
         );
 
-        await saveWidgetToSupabase(widget);
+        await saveWidgetToSupabase(widget, { notifyUpdate: true });
         renderWidgets();
         openWidgetEditor('wishlist');
         showMessage('wishlist updated ♡');
       });
+    });
+  } else if (normalizedId === 'entry-preview') {
+    widget.data = normalizeEntryPreviewWidgetData(widget);
+    if (!isTotoUser()) {
+      widgetPopupTitle.textContent = widget.title || '⊹˚₊ ♡ TOTO’S POEMS ♡ ₊˚⊹';
+      saveWidgetBtn.style.display = 'none';
+      setHeaderWidgetSaveVisibility(false);
+      widgetEditorFields.innerHTML = `<div class="small-note">only toto can add or edit these entries ♡</div>`;
+      widgetPopup.classList.add('open');
+      return;
+    }
+
+    widgetPopupTitle.textContent = widget.title || '⊹˚₊ ♡ TOTO’S POEMS ♡ ₊˚⊹';
+    saveWidgetBtn.style.display = 'none';
+    setHeaderWidgetSaveVisibility(true);
+
+    const entries = getEntryPreviewEntries(widget);
+    const entryRows = entries.map((entry) => `
+      <div class="entry-preview-editor-item" data-entry-preview-editor-item data-entry-id="${escapeHtml(entry.id)}">
+        <div class="entry-preview-editor-item-header">
+          <div class="small-note">entry</div>
+          <button class="delete-entry-preview-widget-entry-btn" type="button">delete</button>
+        </div>
+        <label class="popup-label">title</label>
+        <input
+          class="popup-input"
+          data-entry-preview-title
+          type="text"
+          maxlength="80"
+          value="${escapeHtml(entry.title || '')}"
+        />
+        <label class="popup-label">entry</label>
+        <textarea
+          class="popup-input"
+          data-entry-preview-text
+          rows="7"
+          style="resize: vertical; min-height: 150px;"
+        >${escapeHtml(entry.text || '')}</textarea>
+      </div>
+    `).join('');
+
+    widgetEditorFields.innerHTML = `
+      <div class="entry-preview-editor">
+        <label class="popup-label">button text</label>
+        <input
+          class="popup-input"
+          id="entryPreviewFieldButton"
+          type="text"
+          maxlength="32"
+          value="${escapeHtml(widget.data.buttonLabel || 'open entries')}"
+        />
+
+        <div class="entry-preview-editor-list" id="entryPreviewEditorList">
+          ${entryRows || '<div class="small-note">no entries yet ♡</div>'}
+        </div>
+
+        <button class="soft-btn" id="addEntryPreviewWidgetEntryBtn" type="button">add entry</button>
+      </div>
+    `;
+
+    const entryList = document.getElementById('entryPreviewEditorList');
+    const createEntryEditorRow = (entry = {}) => {
+      const row = document.createElement('div');
+      row.className = 'entry-preview-editor-item';
+      row.dataset.entryPreviewEditorItem = '';
+      row.dataset.entryId = entry.id || createEntryPreviewId();
+      row.innerHTML = `
+        <div class="entry-preview-editor-item-header">
+          <div class="small-note">entry</div>
+          <button class="delete-entry-preview-widget-entry-btn" type="button">delete</button>
+        </div>
+        <label class="popup-label">title</label>
+        <input class="popup-input" data-entry-preview-title type="text" maxlength="80" value="${escapeHtml(entry.title || '')}" />
+        <label class="popup-label">entry</label>
+        <textarea class="popup-input" data-entry-preview-text rows="7" style="resize: vertical; min-height: 150px;">${escapeHtml(entry.text || '')}</textarea>
+      `;
+      row.querySelector('.delete-entry-preview-widget-entry-btn')?.addEventListener('click', () => {
+        row.remove();
+        if (entryList && !entryList.querySelector('[data-entry-preview-editor-item]')) {
+          entryList.innerHTML = '<div class="small-note">no entries yet ♡</div>';
+        }
+      });
+      return row;
+    };
+
+    entryList?.querySelectorAll('.delete-entry-preview-widget-entry-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        btn.closest('[data-entry-preview-editor-item]')?.remove();
+        if (!entryList.querySelector('[data-entry-preview-editor-item]')) {
+          entryList.innerHTML = '<div class="small-note">no entries yet ♡</div>';
+        }
+      });
+    });
+
+    document.getElementById('addEntryPreviewWidgetEntryBtn')?.addEventListener('click', () => {
+      if (!entryList) return;
+      if (!entryList.querySelector('[data-entry-preview-editor-item]')) {
+        entryList.innerHTML = '';
+      }
+      const row = createEntryEditorRow({
+        title: '',
+        text: ''
+      });
+      entryList.appendChild(row);
+      row.querySelector('[data-entry-preview-title]')?.focus();
     });
   } else if (normalizedId.startsWith('photo-pin')) {
     if (!widget.data) {
@@ -3746,6 +4248,66 @@ async function saveWidgetChanges() {
   } else if (editingWidgetId === 'note') {
     if (!widget.data) widget.data = {};
     widget.data.text = document.getElementById('widgetFieldText').value.trim();
+  } else if (editingWidgetId === 'entry-preview') {
+    if (!isTotoUser()) {
+      showMessage('only toto can edit these entries ♡');
+      return;
+    }
+
+    if (!widget.data) widget.data = {};
+    const previousEntries = getEntryPreviewEntries(widget);
+    const existingEntriesById = new Map(previousEntries.map((entry) => [entry.id, entry]));
+    const now = new Date().toISOString();
+    const entries = Array.from(document.querySelectorAll('[data-entry-preview-editor-item]'))
+      .map((row) => {
+        const id = String(row.dataset.entryId || createEntryPreviewId());
+        const existingEntry = existingEntriesById.get(id);
+        const title = row.querySelector('[data-entry-preview-title]')?.value.trim() || '';
+        const text = row.querySelector('[data-entry-preview-text]')?.value.trim() || '';
+
+        return {
+          id,
+          title,
+          text,
+          createdAt: existingEntry?.createdAt || now,
+          updatedAt: (
+            existingEntry &&
+            existingEntry.title === title &&
+            existingEntry.text === text
+          )
+            ? existingEntry.updatedAt
+            : now
+        };
+      })
+      .filter((entry) => entry.title || entry.text);
+    const nextEntriesById = new Map(entries.map((entry) => [entry.id, entry]));
+    const addedEntry = entries.find((entry) => !existingEntriesById.has(entry.id));
+    const deletedEntry = previousEntries.find((entry) => !nextEntriesById.has(entry.id));
+    const editedEntry = entries.find((entry) => {
+      const previousEntry = existingEntriesById.get(entry.id);
+      return previousEntry && (previousEntry.title !== entry.title || previousEntry.text !== entry.text);
+    });
+    const poemAction = addedEntry
+      ? 'added'
+      : deletedEntry
+        ? 'deleted'
+        : editedEntry
+          ? 'edited'
+          : '';
+    const poemActionEntry = addedEntry || deletedEntry || editedEntry || null;
+
+    widget.data = {
+      ...normalizeEntryPreviewWidgetData(widget),
+      buttonLabel: document.getElementById('entryPreviewFieldButton')?.value.trim() || 'open entries',
+      entries,
+      lastPoemAction: poemAction,
+      lastPoemTitle: poemActionEntry?.title || ''
+    };
+    delete widget.data.entryId;
+    delete widget.data.entryTitle;
+    delete widget.data.entryText;
+    delete widget.data.entryCreatedAt;
+    delete widget.data.entryUpdatedAt;
   } else if (String(widget.title || '').toLowerCase().includes('pinned photo') || String(widget.title || '').toLowerCase().includes('pinned') || String(widget.title || '').toLowerCase().includes('pin it') || String(editingWidgetId || '').toLowerCase().startsWith('photo-pin')) {
     if (!widget.data) widget.data = {};
     widget.data.image = document.getElementById('photoWidgetImageData')?.value || '';
@@ -3780,7 +4342,7 @@ async function saveWidgetChanges() {
     return;
   }
 
-  await saveWidgetToSupabase(widget);
+  await saveWidgetToSupabase(widget, { notifyUpdate: true });
   renderWidgets();
   widgetPopup.classList.remove('open');
   setWidgetPopupLikeButton(null);
@@ -3788,7 +4350,11 @@ async function saveWidgetChanges() {
 }
 
 async function saveWidgetToSupabase(widget, options = {}) {
-  const { recordHistory = true, suppressErrorMessage = false } = options;
+  const { recordHistory = true, suppressErrorMessage = false, notifyUpdate = false } = options;
+  if (notifyUpdate) {
+    markWidgetContentUpdated(widget);
+  }
+
   const payload = {
     title: widget.title,
     side: widget.side,
@@ -3857,7 +4423,7 @@ async function toggleWidgetWishlistItem(widgetId, wishId) {
     done: item.id === wishId ? !item.done : item.done
   }));
 
-  await saveWidgetToSupabase(widget);
+  await saveWidgetToSupabase(widget, { notifyUpdate: true });
   renderWidgets();
   if (widgetPopup?.classList.contains('open') && editingWidgetId === 'wishlist') {
     openWidgetEditor('wishlist');
@@ -4060,35 +4626,6 @@ function renderTimeline() {
     });
   });
   renderPlacedStickers();
-}
-
-function renderTimelineSkeleton() {
-  timelineEl.innerHTML = Array.from({ length: 3 }).map(() => `
-    <article class="post post-skeleton">
-      <div class="post-header">
-        <span class="skeleton-line skeleton-line-short"></span>
-      </div>
-      <div class="post-body">
-        <div class="post-meta">
-          <span class="skeleton-avatar"></span>
-          <div class="post-author-text skeleton-author-lines">
-            <span class="skeleton-line skeleton-line-name"></span>
-            <span class="skeleton-line skeleton-line-tiny"></span>
-          </div>
-        </div>
-        <div class="skeleton-paragraph">
-          <span class="skeleton-line"></span>
-          <span class="skeleton-line"></span>
-          <span class="skeleton-line skeleton-line-wide"></span>
-          <span class="skeleton-line skeleton-line-medium"></span>
-        </div>
-        <div class="post-actions">
-          <span class="skeleton-button"></span>
-          <span class="skeleton-button"></span>
-        </div>
-      </div>
-    </article>
-  `).join('');
 }
 
 function getDropBodyFromTarget(target) {
@@ -4977,6 +5514,31 @@ if (typedStickerPreview) {
         event.stopPropagation();
       });
 
+      closeEntryPreviewPopup?.addEventListener('click', () => {
+        entryPreviewPopup?.classList.remove('open');
+      });
+
+      shuffleEntryPreviewPopup?.addEventListener('click', () => {
+        activeEntryPreviewEntries = shuffleEntryPreviewEntries(activeEntryPreviewEntries);
+        renderEntryPreviewEntries(activeEntryPreviewEntries);
+      });
+
+      editEntryPreviewPopup?.addEventListener('click', () => {
+        if (!isTotoUser()) {
+          showMessage('only toto can edit these entries ♡');
+          return;
+        }
+
+        entryPreviewPopup?.classList.remove('open');
+        openWidgetEditor('entry-preview');
+      });
+
+      entryPreviewPopup?.addEventListener('click', (event) => {
+        if (event.target === entryPreviewPopup && !popupPointerStartedInsideCard) {
+          entryPreviewPopup.classList.remove('open');
+        }
+      });
+
       saveWidgetBtn.addEventListener('click', saveWidgetChanges);
       if (headerSaveWidgetBtn) {
         headerSaveWidgetBtn.addEventListener('click', saveWidgetChanges);
@@ -5183,7 +5745,7 @@ function openEntryEditor(postId) {
 
   editingPostId = postId;
   if (entryPopupTitle) entryPopupTitle.textContent = 'edit entry ♡';
-  if (entryPopupLabel) entryPopupLabel.textContent = 'change your words ♡';
+  if (entryPopupLabel) entryPopupLabel.textContent = 'change some words ♡';
   if (saveEntryBtn) saveEntryBtn.textContent = 'save';
   setEntryComposerFromStoredContent(post.text || '');
   entryPopup.classList.add('open');
@@ -5216,20 +5778,82 @@ function hideLaunchSplash() {
     return Promise.resolve();
   }
 
+  setAppBootingState(false);
   launchSplash.classList.add('is-hiding');
 
   return new Promise((resolve) => {
     window.setTimeout(() => {
-      setAppBootingState(false);
       launchSplash.hidden = true;
       resolve();
     }, BOOT_SPLASH_FADE_MS);
   });
 }
 
+function waitForAnimationFrames(count = 2) {
+  return new Promise((resolve) => {
+    const tick = (remaining) => {
+      if (remaining <= 0) {
+        resolve();
+        return;
+      }
+
+      requestAnimationFrame(() => tick(remaining - 1));
+    };
+
+    tick(count);
+  });
+}
+
+function withBootTimeout(promise, timeoutMs = 9000) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => {
+      window.setTimeout(resolve, timeoutMs);
+    })
+  ]);
+}
+
+function waitForWindowLoad() {
+  if (document.readyState === 'complete') {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve) => {
+    window.addEventListener('load', resolve, { once: true });
+  });
+}
+
+function waitForImageLoad(image) {
+  if (!image || (image.complete && image.naturalWidth > 0)) {
+    return Promise.resolve();
+  }
+
+  image.loading = 'eager';
+
+  return new Promise((resolve) => {
+    image.addEventListener('load', resolve, { once: true });
+    image.addEventListener('error', resolve, { once: true });
+  });
+}
+
+async function waitForInitialPageReady() {
+  await waitForAnimationFrames(2);
+
+  const pageImages = Array.from(document.querySelectorAll('.page img'));
+  const readinessTasks = [
+    waitForWindowLoad(),
+    document.fonts?.ready || Promise.resolve(),
+    ...pageImages.map(waitForImageLoad)
+  ];
+
+  await withBootTimeout(Promise.allSettled(readinessTasks));
+  await waitForAnimationFrames(2);
+}
+
 function renderSignedOutShell() {
-  renderTimelineSkeleton();
-  renderWidgetSkeletons();
+  timelineEl.innerHTML = '';
+  leftZone.innerHTML = '';
+  rightZone.innerHTML = '';
   renderNotifications();
 }
 
@@ -5313,6 +5937,16 @@ function getVisibleNotifications() {
   });
 }
 
+function getUnreadNotificationCount(visibleNotifications = getVisibleNotifications()) {
+  const seenAt = getNotificationsSeenAt();
+  const seenTimestamp = seenAt ? new Date(seenAt).getTime() : 0;
+
+  return visibleNotifications.filter((item) => {
+    const createdAt = new Date(item.created_at).getTime();
+    return createdAt > seenTimestamp;
+  }).length;
+}
+
 function ensureNotificationsSeenBaseline() {
   const key = getNotificationsSeenStorageKey();
   if (!key || !notifications.length) return;
@@ -5351,6 +5985,8 @@ function getNotificationTypeLabel(type) {
   if (type === 'post_like') return 'like';
   if (type === 'comment_like') return 'comment like';
   if (type === 'widget_like') return 'widget like';
+  if (type === 'poem') return 'poem';
+  if (type === 'widget_update') return 'widget';
   if (type === 'sticker') return 'sticker';
   return 'update';
 }
@@ -5422,15 +6058,14 @@ function focusWidget(widgetId) {
 }
 
 function renderNotifications() {
-  if (!notificationsList || !notificationsBtn || !notificationsBadge) return;
+  if (!notificationsList || !notificationsBtn || !notificationsBadge) {
+    return;
+  }
 
   const visibleNotifications = getVisibleNotifications();
   const seenAt = getNotificationsSeenAt();
   const seenTimestamp = seenAt ? new Date(seenAt).getTime() : 0;
-  const unreadCount = visibleNotifications.filter((item) => {
-    const createdAt = new Date(item.created_at).getTime();
-    return createdAt > seenTimestamp;
-  }).length;
+  const unreadCount = getUnreadNotificationCount(visibleNotifications);
 
   notificationsBadge.hidden = unreadCount === 0;
   notificationsBadge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
@@ -5482,9 +6117,42 @@ function renderNotifications() {
 
 function getWidgetNotificationName(widget) {
   const normalizedId = String(widget?.id || '').toLowerCase().trim();
+  const normalizedTitle = String(widget?.title || '').toLowerCase();
   if (normalizedId === 'song') return 'now playing';
   if (normalizedId === 'note') return 'smol note';
+  if (normalizedId === 'entry-preview') return 'TOTO’S POEMS';
+  if (normalizedId === 'dates' || normalizedTitle.includes('important dates')) return 'important dates';
+  if (normalizedId === 'wishlist' || normalizedTitle.includes('wishlist')) return 'wishlist';
+  if (normalizedId.startsWith('photo-pin') || normalizedTitle.includes('pin it')) return 'pinned photo';
   return String(widget?.title || 'a widget').trim() || 'a widget';
+}
+
+function getWidgetDataForNotifications(widget) {
+  return widget?.data && typeof widget.data === 'object' && !Array.isArray(widget.data)
+    ? widget.data
+    : {};
+}
+
+function markWidgetContentUpdated(widget) {
+  const actorId = currentProfile?.id || currentUser?.id || '';
+  if (!widget || !actorId) return;
+
+  widget.data = {
+    ...getWidgetDataForNotifications(widget),
+    lastUpdatedBy: actorId,
+    lastUpdatedAt: new Date().toISOString()
+  };
+}
+
+function getPoemWidgetNotificationMessage(actorName, widgetData) {
+  const action = String(widgetData?.lastPoemAction || '').trim();
+  const title = String(widgetData?.lastPoemTitle || '').trim();
+  const titleText = title ? `: ${title}` : '';
+
+  if (action === 'added') return `${actorName} added a new poem${titleText}`;
+  if (action === 'deleted') return `${actorName} deleted a poem${titleText}`;
+  if (action === 'edited') return `${actorName} edited a poem${titleText}`;
+  return `${actorName} updated TOTO’S POEMS`;
 }
 
 function buildNotifications({
@@ -5593,11 +6261,31 @@ function buildNotifications({
   });
 
   (widgetsData || []).forEach((widget) => {
+    const widgetName = getWidgetNotificationName(widget);
+    const widgetData = getWidgetDataForNotifications(widget);
+    const updatedBy = widgetData.lastUpdatedBy || '';
+    const lastUpdatedAt = widgetData.lastUpdatedAt || '';
+
+    if (updatedBy && updatedBy !== myUserId && lastUpdatedAt) {
+      const actorProfile = profileById.get(updatedBy);
+      const actorName = actorProfile?.nickname || actorProfile?.username || 'someone';
+
+      nextNotifications.push({
+        id: `widget-update:${widget.id}:${lastUpdatedAt}`,
+        type: widget.id === 'entry-preview' ? 'poem' : 'widget_update',
+        created_at: lastUpdatedAt,
+        widgetId: widget.id,
+        openComments: false,
+        message: widget.id === 'entry-preview'
+          ? getPoemWidgetNotificationMessage(actorName, widgetData)
+          : `${actorName} updated ${widgetName}`
+      });
+    }
+
     if (!isLikeableWidget(widget)) return;
 
     normalizeWidgetLikesData(widget);
     const likeTimestamps = getWidgetLikeTimestamps(widget);
-    const widgetName = getWidgetNotificationName(widget);
 
     getWidgetLikeUserIds(widget).forEach((userId) => {
       if (!userId || userId === myUserId) return;
@@ -5712,11 +6400,7 @@ async function getCurrentUser() {
 
 async function refreshUserData(options = {}) {
   const { includeWidgets = false } = options;
-  renderTimelineSkeleton();
   renderNotifications();
-  if (includeWidgets) {
-    renderWidgetSkeletons();
-  }
 
   const tasks = [
     loadPosts({ render: false }),
@@ -6737,6 +7421,7 @@ function renderCommentsList(postId) {
         <div class="comment-reply" data-comment-id="${reply.id}">
           <div class="comment-name">${reply.nickname || 'memory'}</div>
           <div class="comment-text" data-comment-text-id="${reply.id}"></div>
+          <div class="comment-link-preview-list link-preview-list" data-comment-preview-id="${reply.id}" hidden></div>
 
           <div class="comment-actions">
             <button class="comment-like-btn" type="button" data-comment-id="${reply.id}">
@@ -6756,6 +7441,7 @@ function renderCommentsList(postId) {
       <div class="comment-item" data-comment-id="${comment.id}">
         <div class="comment-name">${comment.nickname || 'memory'}</div>
         <div class="comment-text" data-comment-text-id="${comment.id}"></div>
+        <div class="comment-link-preview-list link-preview-list" data-comment-preview-id="${comment.id}" hidden></div>
 
         <div class="comment-actions">
           <button class="comment-like-btn" type="button" data-comment-id="${comment.id}">
@@ -6782,7 +7468,11 @@ function renderCommentsList(postId) {
       `[data-comment-text-id="${comment.id}"]`
     );
     if (commentTextEl) {
-      commentTextEl.textContent = comment.text;
+      renderTextWithLinkPreviews(
+        commentTextEl,
+        commentsList.querySelector(`[data-comment-preview-id="${comment.id}"]`),
+        comment.text
+      );
     }
 
     (comment.replies || []).forEach((reply) => {
@@ -6790,7 +7480,11 @@ function renderCommentsList(postId) {
         `[data-comment-text-id="${reply.id}"]`
       );
       if (replyTextEl) {
-        replyTextEl.textContent = reply.text;
+        renderTextWithLinkPreviews(
+          replyTextEl,
+          commentsList.querySelector(`[data-comment-preview-id="${reply.id}"]`),
+          reply.text
+        );
       }
     });
   });
@@ -7014,33 +7708,32 @@ document.addEventListener('click', (event) => {
 document.addEventListener('click', (event) => {
   const link = event.target.closest?.('a[href]');
 
-  if (!link || !isLegacyAnniversaryUrl(link.href)) {
+  if (!link || (!isLegacyAnniversaryUrl(link.href) && !isAnniversaryWrapperUrl(link.href))) {
     return;
   }
 
   event.preventDefault();
-        window.open(ANNIVERSARY_WRAPPER_URL, '_blank', 'noopener,noreferrer');
+        window.open(getAnniversaryWrapperUrl(), '_blank', 'noopener,noreferrer');
 }, true);
 
 setTheme(document.documentElement.dataset.theme);
 normalizeChromeSymbols();
 try {
-  activeMobileView = localStorage.getItem(MOBILE_VIEW_STORAGE_KEY) || 'timeline';
+  localStorage.removeItem(MOBILE_VIEW_STORAGE_KEY);
 } catch (error) {
   console.error(error);
-  activeMobileView = 'timeline';
 }
+activeMobileView = 'timeline';
 applyMobileView();
 syncMobileViewSwitcherVisibility();
 initEntryEditor();
 renderDecor();
-renderTimelineSkeleton();
-renderWidgetSkeletons();
 renderNotifications();
 
 async function initApp() {
   try {
     await checkSession();
+    await waitForInitialPageReady();
   } finally {
     if (!shouldUseLaunchSplash()) {
       if (launchSplash) {

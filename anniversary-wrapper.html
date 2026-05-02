@@ -10,8 +10,51 @@
       rel="stylesheet"
     />
     <title>Opening Website</title>
+    <script>
+      (() => {
+        try {
+          const params = new URLSearchParams(location.search);
+          const requestedTheme = params.get("theme");
+          const savedTheme = localStorage.getItem("anniversaryWrapperTheme");
+          const prefersDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+          const nextTheme =
+            requestedTheme === "dark" || requestedTheme === "light"
+              ? requestedTheme
+              : savedTheme || (prefersDark ? "dark" : "light");
+
+          document.documentElement.dataset.theme = nextTheme;
+          localStorage.setItem("anniversaryWrapperTheme", nextTheme);
+        } catch {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
     <style>
       :root {
+        color-scheme: light;
+        --bg-1: #fff8fb;
+        --bg-2: #fff0f6;
+        --bg-3: #fffdfd;
+        --card: rgba(255, 252, 254, 0.92);
+        --card-strong: rgba(255, 253, 254, 0.96);
+        --border: rgba(238, 182, 200, 0.82);
+        --text: #684756;
+        --muted: #9b7484;
+        --accent: #d85c93;
+        --retry-bg: rgba(255, 253, 254, 0.94);
+        --shadow: 0 24px 60px rgba(198, 133, 160, 0.24);
+        --body-bg:
+          radial-gradient(circle at 18% 16%, rgba(242, 197, 215, 0.44), transparent 19%),
+          radial-gradient(circle at 82% 14%, rgba(232, 214, 226, 0.38), transparent 22%),
+          radial-gradient(circle at 50% 62%, rgba(255, 255, 255, 0.86), transparent 30%),
+          linear-gradient(180deg, var(--bg-1), var(--bg-2), var(--bg-3));
+        --card-bg:
+          radial-gradient(circle at 5% 6%, rgba(255, 255, 255, 0.68), transparent 27%),
+          radial-gradient(circle at 96% 100%, rgba(240, 184, 203, 0.18), transparent 28%),
+          linear-gradient(180deg, var(--card-strong), var(--card));
+      }
+
+      html[data-theme="dark"] {
         color-scheme: dark;
         --bg-1: #160f1b;
         --bg-2: #211527;
@@ -22,7 +65,17 @@
         --text: #f7e7f1;
         --muted: #c9aabe;
         --accent: #f0b8cb;
+        --retry-bg: rgba(55, 34, 52, 0.9);
         --shadow: 0 24px 60px rgba(5, 2, 8, 0.52);
+        --body-bg:
+          radial-gradient(circle at 18% 16%, rgba(132, 76, 119, 0.34), transparent 19%),
+          radial-gradient(circle at 82% 14%, rgba(92, 58, 115, 0.34), transparent 22%),
+          radial-gradient(circle at 50% 62%, rgba(67, 40, 76, 0.56), transparent 30%),
+          linear-gradient(180deg, var(--bg-1), var(--bg-2), var(--bg-3));
+        --card-bg:
+          radial-gradient(circle at 5% 6%, rgba(240, 184, 203, 0.18), transparent 27%),
+          radial-gradient(circle at 96% 100%, rgba(240, 184, 203, 0.14), transparent 28%),
+          linear-gradient(180deg, var(--card-strong), var(--card));
       }
 
       * {
@@ -41,11 +94,7 @@
         place-items: center;
         padding: max(24px, env(safe-area-inset-top)) 24px max(24px, env(safe-area-inset-bottom));
         color: var(--text);
-        background:
-          radial-gradient(circle at 18% 16%, rgba(132, 76, 119, 0.34), transparent 19%),
-          radial-gradient(circle at 82% 14%, rgba(92, 58, 115, 0.34), transparent 22%),
-          radial-gradient(circle at 50% 62%, rgba(67, 40, 76, 0.56), transparent 30%),
-          linear-gradient(180deg, var(--bg-1), var(--bg-2), var(--bg-3));
+        background: var(--body-bg);
         font-family: "Quicksand", "Segoe UI", sans-serif;
         overflow: hidden;
       }
@@ -55,10 +104,7 @@
         padding: clamp(28px, 6vw, 44px);
         border: 1px solid var(--border);
         border-radius: 34px;
-        background:
-          radial-gradient(circle at 5% 6%, rgba(240, 184, 203, 0.18), transparent 27%),
-          radial-gradient(circle at 96% 100%, rgba(240, 184, 203, 0.14), transparent 28%),
-          linear-gradient(180deg, var(--card-strong), var(--card));
+        background: var(--card-bg);
         box-shadow: var(--shadow);
         text-align: center;
         position: relative;
@@ -108,7 +154,7 @@
         padding: 0 20px;
         border: 1px solid var(--border);
         border-radius: 16px;
-        background: rgba(55, 34, 52, 0.9);
+        background: var(--retry-bg);
         color: var(--text);
         font-weight: 700;
         text-decoration: none;
@@ -264,10 +310,15 @@
 
       function injectNavigationBridge(html, sourceUrl) {
         const bridgeCode = `
+          function __getWrappedTheme() {
+            return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+          }
+
           window.__openWrappedPage = function (path) {
             const nextUrl = new URL(path, ${JSON.stringify(getAssetBaseUrl(sourceUrl))}).href;
             const launcherUrl = new URL(${JSON.stringify(wrapperUrl)});
             launcherUrl.searchParams.set("url", nextUrl);
+            launcherUrl.searchParams.set("theme", __getWrappedTheme());
             window.location.assign(launcherUrl.href);
           };
         `;

@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="˗ˏˋ ⁺ ‧ ₊ ˚ ཐི ⋆ TOTO&DODO ⋆ ཋྀ ˚ ₊ ‧ ⁺ ˎˊ˗" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -26,26 +27,18 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600&family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Batak&family=Noto+Sans+Symbols+2&family=Quicksand:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Dancing+Script:wght@400;500;600;700&family=Fredoka:wght@400;500;600&family=Lora:wght@400;500;600;700&family=Merriweather:wght@400;700&family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Batak&family=Noto+Sans+Symbols+2&family=Nunito:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Quicksand:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css?v=20260427-7" />
-    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
-    <script>
-      window.OneSignalDeferred = window.OneSignalDeferred || [];
-      OneSignalDeferred.push(async function(OneSignal) {
-        await OneSignal.init({
-          appId: "1a14f845-ea11-4b5e-803f-922cae54a186",
-          serviceWorkerPath: "/our-memories/OneSignalSDKWorker.js",
-          serviceWorkerParam: { scope: "/our-memories/" },
-        });
-      });
-    </script>
+    <link rel="stylesheet" href="./styles.css?v=20260502-26" />
   </head>
   <body class="app-booting">
     <div class="launch-splash" id="launchSplash" aria-hidden="true">
-      <img class="launch-splash-image" src="./launching.jpeg" alt="" />
+      <picture>
+        <source media="(min-width: 721px)" srcset="./launching-pc.jpeg" />
+        <img class="launch-splash-image" src="./launching.jpeg" alt="" />
+      </picture>
     </div>
     <div class="page" data-mobile-view="timeline">
       <div class="floating-decor" id="floatingDecor"></div>
@@ -92,18 +85,6 @@
               <span class="theme-toggle-icon" aria-hidden="true">☾</span>
             </button>
             <button class="soft-btn" type="button" id="profileBtn">profile</button>
-          </div>
-        </div>
-        <div class="toolbar-inner toolbar-skeleton" aria-hidden="true">
-          <div class="toolbar-skeleton-brand">
-            <span class="skeleton-avatar toolbar-skeleton-icon"></span>
-            <span class="skeleton-line toolbar-skeleton-title"></span>
-          </div>
-          <span class="skeleton-block toolbar-skeleton-quote"></span>
-          <div class="toolbar-skeleton-actions">
-            <span class="skeleton-button toolbar-skeleton-btn toolbar-skeleton-btn-inbox"></span>
-            <span class="skeleton-button toolbar-skeleton-btn toolbar-skeleton-btn-toggle"></span>
-            <span class="skeleton-button toolbar-skeleton-btn"></span>
           </div>
         </div>
       </header>
@@ -244,6 +225,22 @@
       </div>
     </div>
 
+    <div class="popup" id="entryPreviewPopup">
+      <div class="popup-card entry-preview-popup-card">
+        <div class="popup-header">
+          <h3 class="popup-title" id="entryPreviewTitle">entry preview ♡</h3>
+          <div class="popup-header-actions">
+            <button class="soft-btn entry-preview-icon-btn" id="shuffleEntryPreviewPopup" type="button" aria-label="shuffle entries" title="shuffle entries" data-mobile-label="⤨">shuffle</button>
+            <button class="soft-btn entry-preview-icon-btn" id="editEntryPreviewPopup" type="button" hidden aria-label="edit entries" title="edit entries" data-mobile-label="✎">edit</button>
+            <button class="soft-btn entry-preview-icon-btn" id="closeEntryPreviewPopup" type="button" aria-label="close" title="close" data-mobile-label="×">close</button>
+          </div>
+        </div>
+        <div class="popup-body">
+          <div class="entry-preview-list" id="entryPreviewList"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="popup" id="stickerPopup">
       <div class="popup-card">
         <div class="popup-header">
@@ -328,7 +325,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
-    <script src="./script.js?v=20260427-7"></script>
+    <script src="./script.js?v=20260502-23"></script>
   </body>
 </html>
 
