@@ -1,11 +1,14 @@
-﻿<!DOCTYPE html>
+﻿<!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="˗ˏˋ ⁺ ‧ ₊ ˚ ཐི ⋆ TOTO&DODO ⋆ ཋྀ ˚ ₊ ‧ ⁺ ˎˊ˗" />
+    <meta
+      name="apple-mobile-web-app-title"
+      content="˗ˏˋ ⁺ ‧ ₊ ˚ ཐི ⋆ TOTO&DODO ⋆ ཋྀ ˚ ₊ ‧ ⁺ ˎˊ˗"
+    />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#fff8fb" />
     <link rel="icon" type="image/png" sizes="853x853" href="./icon.png" />
@@ -16,11 +19,14 @@
     <script>
       (() => {
         try {
-          const savedTheme = localStorage.getItem('ourMemoriesTheme');
-          const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;
-          document.documentElement.dataset.theme = savedTheme || (prefersDark ? 'dark' : 'light');
+          const savedTheme = localStorage.getItem("ourMemoriesTheme");
+          const prefersDark = window.matchMedia?.(
+            "(prefers-color-scheme: dark)",
+          ).matches;
+          document.documentElement.dataset.theme =
+            savedTheme || (prefersDark ? "dark" : "light");
         } catch {
-          document.documentElement.dataset.theme = 'light';
+          document.documentElement.dataset.theme = "light";
         }
       })();
     </script>
@@ -30,8 +36,11 @@
       href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Dancing+Script:wght@400;500;600;700&family=Fredoka:wght@400;500;600&family=Lora:wght@400;500;600;700&family=Merriweather:wght@400;700&family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+Batak&family=Noto+Sans+Symbols+2&family=Nunito:wght@400;500;600;700&family=Playfair+Display:wght@400;500;600;700&family=Quicksand:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css" rel="stylesheet" />
-    <link rel="stylesheet" href="./styles.css?v=20260502-26" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css?v=20260502-34" />
   </head>
   <body class="app-booting">
     <div class="launch-splash" id="launchSplash" aria-hidden="true">
@@ -46,7 +55,9 @@
       <header class="toolbar" id="appToolbar" data-auth-state="checking">
         <div class="toolbar-inner toolbar-live">
           <div class="brand">
-            <div class="site-title">˗ˏˋ ⁺ ‧ ₊ ˚ ཐི ⋆ TOTO&DODO ⋆ ཋྀ ˚ ₊ ‧ ⁺ ˎˊ˗</div>
+            <div class="site-title">
+              ˗ˏˋ ⁺ ‧ ₊ ˚ ཐི ⋆ TOTO&DODO ⋆ ཋྀ ˚ ₊ ‧ ⁺ ˎˊ˗
+            </div>
           </div>
 
           <div class="quote-pill">⊹˚₊ forever and always ₊˚⊹</div>
@@ -62,14 +73,21 @@
               >
                 <span class="notifications-btn-icon" aria-hidden="true">🕭</span>
                 <span class="notifications-btn-label">inbox</span>
-                <span class="notifications-badge" id="notificationsBadge" hidden>0</span>
+                <span class="notifications-badge" id="notificationsBadge" hidden
+                  >0</span
+                >
               </button>
               <div class="notifications-panel" id="notificationsPanel" hidden>
                 <div class="notifications-panel-header">
                   <h3 class="notifications-title">inbox ♡</h3>
                   <div class="notifications-panel-actions">
-                    <button class="notifications-mark-btn" id="markAllReadBtn" type="button">mark all read</button>
-                    <button class="notifications-mark-btn" id="clearNotificationsBtn" type="button">clear notifications</button>
+                    <button
+                      class="notifications-mark-btn"
+                      id="clearNotificationsBtn"
+                      type="button"
+                    >
+                      clear notifications
+                    </button>
                   </div>
                 </div>
                 <div class="notifications-list" id="notificationsList"></div>
@@ -84,19 +102,36 @@
             >
               <span class="theme-toggle-icon" aria-hidden="true">☾</span>
             </button>
-            <button class="soft-btn" type="button" id="profileBtn">profile</button>
+            <button class="soft-btn" type="button" id="profileBtn">
+              profile
+            </button>
           </div>
         </div>
       </header>
 
       <div class="mobile-view-switcher" id="mobileViewSwitcher" hidden>
-        <button class="mobile-view-btn" type="button" data-mobile-view="left" aria-pressed="false">
+        <button
+          class="mobile-view-btn"
+          type="button"
+          data-mobile-view="left"
+          aria-pressed="false"
+        >
           left side
         </button>
-        <button class="mobile-view-btn active" type="button" data-mobile-view="timeline" aria-pressed="true">
+        <button
+          class="mobile-view-btn active"
+          type="button"
+          data-mobile-view="timeline"
+          aria-pressed="true"
+        >
           entries
         </button>
-        <button class="mobile-view-btn" type="button" data-mobile-view="right" aria-pressed="false">
+        <button
+          class="mobile-view-btn"
+          type="button"
+          data-mobile-view="right"
+          aria-pressed="false"
+        >
           right side
         </button>
       </div>
@@ -110,7 +145,12 @@
       </main>
     </div>
 
-    <button class="floating-entry-btn" type="button" id="newEntryBtn" aria-label="create new entry">
+    <button
+      class="floating-entry-btn"
+      type="button"
+      id="newEntryBtn"
+      aria-label="create new entry"
+    >
       <span class="floating-entry-icon" aria-hidden="true">+</span>
     </button>
 
@@ -120,18 +160,31 @@
       <div class="popup-card">
         <div class="popup-header">
           <h3 class="popup-title">my profile ♡</h3>
-          <button class="soft-btn" id="closeProfilePopup" type="button">close</button>
+          <button class="soft-btn" id="closeProfilePopup" type="button">
+            close
+          </button>
         </div>
         <div class="popup-body">
           <label class="popup-label">nickname</label>
           <input class="popup-input" id="nicknameInput" type="text" />
-    
-          <label class="popup-label" style="margin-top: 12px;">profile picture</label>
-          <input class="popup-input" id="pfpInput" type="file" accept="image/*" />
-    
+
+          <label class="popup-label" style="margin-top: 12px"
+            >profile picture</label
+          >
+          <input
+            class="popup-input"
+            id="pfpInput"
+            type="file"
+            accept="image/*"
+          />
+
           <div class="popup-actions">
-            <button class="soft-btn" id="logoutBtn" type="button">log out</button>
-            <button class="soft-btn" id="saveProfileBtn" type="button">save</button>
+            <button class="soft-btn" id="logoutBtn" type="button">
+              log out
+            </button>
+            <button class="soft-btn" id="saveProfileBtn" type="button">
+              save
+            </button>
           </div>
         </div>
       </div>
@@ -142,21 +195,48 @@
         <div class="popup-header">
           <h3 class="popup-title">new entry ✎</h3>
           <div class="popup-header-actions">
-            <button class="soft-btn" id="saveEntryBtn" type="button">post</button>
-            <button class="soft-btn" id="closeEntryPopup" type="button">close</button>
+            <button class="soft-btn" id="saveEntryBtn" type="button">
+              post
+            </button>
+            <button class="soft-btn" id="closeEntryPopup" type="button">
+              close
+            </button>
           </div>
         </div>
         <div class="popup-body">
           <label class="popup-label">write something ♡</label>
           <div class="entry-editor" id="entryEditor"></div>
-          <textarea class="popup-input entry-fallback" id="entryContentFallback" rows="6" style="resize: vertical; min-height: 140px;"></textarea>
+          <textarea
+            class="popup-input entry-fallback"
+            id="entryContentFallback"
+            rows="6"
+            style="resize: vertical; min-height: 140px"
+          ></textarea>
           <div class="entry-attachment-fields">
-            <label class="popup-label" for="entryImageInput">attach image</label>
+            <label class="popup-label" for="entryImageInput"
+              >attach image</label
+            >
             <div class="entry-image-box">
-              <input class="popup-input" id="entryImageInput" type="file" accept="image/*" />
+              <input
+                class="popup-input"
+                id="entryImageInput"
+                type="file"
+                accept="image/*"
+              />
               <input id="entryImageData" type="hidden" value="" />
-              <div class="entry-image-preview" id="entryImagePreview" hidden></div>
-              <button class="soft-btn entry-image-remove-btn" id="removeEntryImageBtn" type="button" hidden>remove image</button>
+              <div
+                class="entry-image-preview"
+                id="entryImagePreview"
+                hidden
+              ></div>
+              <button
+                class="soft-btn entry-image-remove-btn"
+                id="removeEntryImageBtn"
+                type="button"
+                hidden
+              >
+                remove image
+              </button>
             </div>
           </div>
         </div>
@@ -167,22 +247,40 @@
       <div class="popup-card">
         <div class="popup-header">
           <h3 class="popup-title">comments ♡</h3>
-          <button class="soft-btn" id="closeCommentsPopup" type="button">close</button>
+          <button class="soft-btn" id="closeCommentsPopup" type="button">
+            close
+          </button>
         </div>
         <div class="popup-body">
-          <div id="commentsList" style="display:flex; flex-direction:column; gap:12px; max-height:260px; overflow:auto; margin-bottom:16px;"></div>
-    
-          <div id="replyingToLabel" class="small-note" style="display:none;"></div>
+          <div
+            id="commentsList"
+            style="
+              display: flex;
+              flex-direction: column;
+              gap: 12px;
+              max-height: 260px;
+              overflow: auto;
+              margin-bottom: 16px;
+            "
+          ></div>
+
+          <div
+            id="replyingToLabel"
+            class="small-note"
+            style="display: none"
+          ></div>
           <label class="popup-label">leave a smol note?</label>
           <textarea
             class="popup-input"
             id="commentInput"
             rows="4"
-            style="resize: vertical; min-height: 96px;"
+            style="resize: vertical; min-height: 96px"
           ></textarea>
-    
+
           <div class="popup-actions">
-            <button class="soft-btn" id="saveCommentBtn" type="button">post comment</button>
+            <button class="soft-btn" id="saveCommentBtn" type="button">
+              post comment
+            </button>
           </div>
         </div>
       </div>
@@ -196,30 +294,60 @@
         <div class="popup-body">
           <p class="confirm-popup-text">this entry will be deleted forever.</p>
           <div class="popup-actions confirm-popup-actions">
-            <button class="soft-btn" id="cancelDeleteEntryBtn" type="button">cancel</button>
-            <button class="soft-btn danger-btn" id="confirmDeleteEntryBtn" type="button">delete</button>
+            <button class="soft-btn" id="cancelDeleteEntryBtn" type="button">
+              cancel
+            </button>
+            <button
+              class="soft-btn danger-btn"
+              id="confirmDeleteEntryBtn"
+              type="button"
+            >
+              delete
+            </button>
           </div>
         </div>
       </div>
     </div>
-
-
 
     <div class="popup" id="widgetPopup">
       <div class="popup-card">
         <div class="popup-header">
           <h3 class="popup-title" id="widgetPopupTitle">edit widget</h3>
           <div class="popup-header-actions">
-            <button class="soft-btn widget-clear-history-btn" id="clearWidgetHistoryBtn" type="button">clear history</button>
-            <button class="post-btn like-btn widget-like-btn widget-popup-like-btn" id="widgetPopupLikeBtn" type="button" hidden aria-label="like widget" aria-pressed="false"></button>
-            <button class="soft-btn" id="headerSaveWidgetBtn" type="button" hidden>save</button>
-            <button class="soft-btn" id="closeWidgetPopup" type="button">close</button>
+            <button
+              class="soft-btn widget-clear-history-btn"
+              id="clearWidgetHistoryBtn"
+              type="button"
+            >
+              clear history
+            </button>
+            <button
+              class="post-btn like-btn widget-like-btn widget-popup-like-btn"
+              id="widgetPopupLikeBtn"
+              type="button"
+              hidden
+              aria-label="like widget"
+              aria-pressed="false"
+            ></button>
+            <button
+              class="soft-btn"
+              id="headerSaveWidgetBtn"
+              type="button"
+              hidden
+            >
+              save
+            </button>
+            <button class="soft-btn" id="closeWidgetPopup" type="button">
+              close
+            </button>
           </div>
         </div>
         <div class="popup-body">
           <div id="widgetEditorFields"></div>
           <div class="popup-actions">
-            <button class="soft-btn" id="saveWidgetBtn" type="button">save</button>
+            <button class="soft-btn" id="saveWidgetBtn" type="button">
+              save
+            </button>
           </div>
         </div>
       </div>
@@ -230,9 +358,37 @@
         <div class="popup-header">
           <h3 class="popup-title" id="entryPreviewTitle">entry preview ♡</h3>
           <div class="popup-header-actions">
-            <button class="soft-btn entry-preview-icon-btn" id="shuffleEntryPreviewPopup" type="button" aria-label="shuffle entries" title="shuffle entries" data-mobile-label="⤨">shuffle</button>
-            <button class="soft-btn entry-preview-icon-btn" id="editEntryPreviewPopup" type="button" hidden aria-label="edit entries" title="edit entries" data-mobile-label="✎">edit</button>
-            <button class="soft-btn entry-preview-icon-btn" id="closeEntryPreviewPopup" type="button" aria-label="close" title="close" data-mobile-label="×">close</button>
+            <button
+              class="soft-btn entry-preview-icon-btn"
+              id="shuffleEntryPreviewPopup"
+              type="button"
+              aria-label="shuffle entries"
+              title="shuffle entries"
+              data-mobile-label="⤨"
+            >
+              shuffle
+            </button>
+            <button
+              class="soft-btn entry-preview-icon-btn"
+              id="editEntryPreviewPopup"
+              type="button"
+              hidden
+              aria-label="edit entries"
+              title="edit entries"
+              data-mobile-label="✎"
+            >
+              edit
+            </button>
+            <button
+              class="soft-btn entry-preview-icon-btn"
+              id="closeEntryPreviewPopup"
+              type="button"
+              aria-label="close"
+              title="close"
+              data-mobile-label="×"
+            >
+              close
+            </button>
           </div>
         </div>
         <div class="popup-body">
@@ -246,24 +402,52 @@
         <div class="popup-header">
           <h3 class="popup-title">✦ sticker box ♡</h3>
           <div class="popup-header-actions">
-            <button class="soft-btn" id="closeStickerPopup" type="button">close</button>
+            <button class="soft-btn" id="closeStickerPopup" type="button">
+              close
+            </button>
           </div>
         </div>
         <div class="popup-body">
           <div class="sticker-tabs" id="stickerTabs">
-            <button class="sticker-tab active" type="button" data-sticker-tab="type">type one</button>
-            <button class="sticker-tab" type="button" data-sticker-tab="pick">pick one</button>
-            <button class="sticker-tab" type="button" data-sticker-tab="gif">gifs</button>
+            <button
+              class="sticker-tab active"
+              type="button"
+              data-sticker-tab="type"
+            >
+              type one
+            </button>
+            <button class="sticker-tab" type="button" data-sticker-tab="pick">
+              pick one
+            </button>
+            <button class="sticker-tab" type="button" data-sticker-tab="gif">
+              gifs
+            </button>
           </div>
 
           <div class="sticker-panel active" id="stickerTypePanel">
-          <label class="popup-label" for="stickerInput">add a little sticker ♡</label>
-          <div class="typed-sticker-input-wrap">
-            <input class="popup-input typed-sticker-input" id="stickerInput" maxlength="16" placeholder="" />
-            <div class="typed-sticker-preview-wrap" id="typedStickerPreviewWrap" hidden>
-              <button class="typed-sticker-preview" id="typedStickerPreview" type="button" draggable="true"></button>
+            <label class="popup-label" for="stickerInput"
+              >add a little sticker ♡</label
+            >
+            <div class="typed-sticker-input-wrap">
+              <input
+                class="popup-input typed-sticker-input"
+                id="stickerInput"
+                maxlength="16"
+                placeholder=""
+              />
+              <div
+                class="typed-sticker-preview-wrap"
+                id="typedStickerPreviewWrap"
+                hidden
+              >
+                <button
+                  class="typed-sticker-preview"
+                  id="typedStickerPreview"
+                  type="button"
+                  draggable="true"
+                ></button>
+              </div>
             </div>
-          </div>
           </div>
 
           <div class="sticker-panel" id="stickerPickPanel">
@@ -280,52 +464,56 @@
                 type="text"
                 placeholder="Search GIPHY"
               />
-              <button class="soft-btn" id="gifSearchBtn" type="button">search</button>
+              <button class="soft-btn" id="gifSearchBtn" type="button">
+                search
+              </button>
             </div>
             <div class="small-note" id="gifSearchStatus"></div>
             <div class="gif-picker-grid" id="gifPickerGrid"></div>
             <div class="gif-attribution">Powered by GIPHY</div>
           </div>
 
-          <div class="small-note">you can drag your stickers from the sticker box onto any diary entry ♡</div>
+          <div class="small-note">
+            you can drag your stickers from the sticker box onto any diary entry
+            ♡
+          </div>
         </div>
       </div>
     </div>
 
     <div class="popup open" id="authPopup">
-        <div class="popup-card">
-          <div class="popup-header">
-            <h3 class="popup-title">welcome back ♡</h3>
+      <div class="popup-card">
+        <div class="popup-header">
+          <h3 class="popup-title">welcome back ♡</h3>
+        </div>
+        <div class="popup-body">
+          <label class="popup-label">email</label>
+          <input class="popup-input" id="emailInput" type="email" />
+
+          <label class="popup-label" style="margin-top: 12px">password</label>
+          <div class="password-input-wrap">
+            <input class="popup-input" id="passwordInput" type="password" />
+            <button
+              class="password-toggle-btn"
+              id="passwordToggleBtn"
+              type="button"
+              aria-label="show password"
+              aria-pressed="false"
+            >
+              <span class="password-toggle-icon" aria-hidden="true">◉</span>
+            </button>
           </div>
-          <div class="popup-body">
-            <label class="popup-label">email</label>
-            <input class="popup-input" id="emailInput" type="email" />
-      
-            <label class="popup-label" style="margin-top: 12px;">password</label>
-            <div class="password-input-wrap">
-              <input class="popup-input" id="passwordInput" type="password" />
-              <button
-                class="password-toggle-btn"
-                id="passwordToggleBtn"
-                type="button"
-                aria-label="show password"
-                aria-pressed="false"
-              >
-                <span class="password-toggle-icon" aria-hidden="true">◉</span>
-              </button>
-            </div>
-      
-            <div class="popup-actions">
-              <button class="soft-btn" id="loginBtn">login</button>
-            </div>
+
+          <div class="popup-actions">
+            <button class="soft-btn" id="loginBtn">login</button>
           </div>
         </div>
       </div>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
-    <script src="./script.js?v=20260502-23"></script>
+    <script src="./script.js?v=20260502-29"></script>
   </body>
 </html>
-
