@@ -6251,17 +6251,56 @@ function getAllPhotoPinWidgets() {
   return widgets.filter((widget) => isPhotoPinWidget(widget));
 }
 
+function getHistoryProfilePool() {
+  const pool = [];
+
+  if (currentProfile?.id) {
+    pool.push(currentProfile);
+  }
+
+  knownProfiles.forEach((profile) => {
+    if (!profile?.id || pool.some((item) => item?.id === profile.id)) return;
+    pool.push(profile);
+  });
+
+  return pool;
+}
+
+function findHistoryProfileByKeyword(keyword) {
+  const normalizedKeyword = String(keyword || "").trim().toLowerCase();
+  if (!normalizedKeyword) return null;
+
+  return (
+    getHistoryProfilePool().find((profile) => {
+      const identity =
+        `${profile?.nickname || ""} ${profile?.username || ""}`.toLowerCase();
+      return identity.includes(normalizedKeyword);
+    }) || null
+  );
+}
+
+function getLegacyHistoryActorName(entry) {
+  const totoProfile = findHistoryProfileByKeyword("toto");
+  const dodoProfile = findHistoryProfileByKeyword("dodo");
+
+  if (entry?.side === "left") {
+    return getProfileDisplayName(dodoProfile || totoProfile, "someone");
+  }
+
+  if (entry?.side === "right") {
+    return getProfileDisplayName(totoProfile || dodoProfile, "someone");
+  }
+
+  return getProfileDisplayName(dodoProfile || totoProfile, "someone");
+}
+
 function getWidgetHistoryActorName(entry) {
   const savedName = String(entry?.actorName || "").trim();
   if (savedName) return savedName;
 
   const actorId = String(entry?.actorId || "").trim();
   if (!actorId) {
-    return entry?.side === "left"
-      ? "left side"
-      : entry?.side === "right"
-        ? "right side"
-        : "someone";
+    return getLegacyHistoryActorName(entry);
   }
 
   if (currentProfile?.id === actorId) {
