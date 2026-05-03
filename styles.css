@@ -9,6 +9,8 @@
   --header-strong: #e9adc2;
   --border: #4a3347;
   --border-2: #6d425b;
+  --button-border: #dbb4c3;
+  --button-border-strong: #c995aa;
   --text: #5d3d4b;
   --text-soft: #8a6675;
   --shadow: 0 16px 34px rgba(198, 133, 160, 0.18);
@@ -58,6 +60,8 @@ html[data-theme="dark"] {
   --header-strong: #4e3046;
   --border: #4a3347;
   --border-2: #6d425b;
+  --button-border: #93697f;
+  --button-border-strong: #ac7891;
   --text: #f4deeb;
   --text-soft: #c7a8ba;
   --shadow: 0 16px 34px rgba(12, 7, 16, 0.42);
@@ -348,7 +352,7 @@ body:not(.app-authenticated) .floating-entry-btn {
 }
 
 .notifications-btn {
-  border: 1px solid var(--border-2);
+  border: 1px solid var(--button-border);
   background: rgba(255, 253, 254, 0.94);
   color: var(--text);
   border-radius: 16px;
@@ -591,7 +595,7 @@ h3,
 }
 
 .soft-btn {
-  border: 1px solid var(--border-2);
+  border: 1px solid var(--button-border);
   background: rgba(255, 253, 254, 0.94);
   color: var(--text);
   border-radius: 16px;
@@ -616,7 +620,7 @@ h3,
 }
 
 .theme-toggle {
-  border: 1px solid var(--border-2);
+  border: 1px solid var(--button-border);
   background: rgba(255, 253, 254, 0.94);
   color: var(--text);
   border-radius: 16px;
@@ -677,6 +681,7 @@ html[data-theme="dark"] .post,
 html[data-theme="dark"] .message,
 html[data-theme="dark"] .comment-item,
 html[data-theme="dark"] .comment-reply,
+html[data-theme="dark"] .photo-history-card,
 html[data-theme="dark"] .widget-history-item {
   background: var(--card);
   border-color: var(--border);
@@ -744,6 +749,75 @@ html[data-theme="dark"] .notification-item.is-unread {
     rgba(52, 33, 59, 0.96)
   );
   border-color: rgba(232, 154, 188, 0.46);
+}
+
+html[data-theme="dark"] .photo-history-frame {
+  background: linear-gradient(
+    180deg,
+    rgba(52, 33, 59, 0.98),
+    rgba(34, 22, 40, 0.98)
+  );
+}
+
+html[data-theme="dark"] #widgetPopup .popup-card.photo-history-popup-card {
+  border-color: rgba(126, 86, 108, 0.72);
+  background:
+    linear-gradient(180deg, rgba(35, 22, 40, 0.98), rgba(29, 18, 34, 0.98));
+  box-shadow: 0 28px 60px rgba(8, 4, 12, 0.52);
+}
+
+html[data-theme="dark"] #widgetPopup .popup-card.photo-history-popup-card .popup-header {
+  background: linear-gradient(180deg, #4a3046, #3b2538);
+  border-bottom-color: rgba(126, 86, 108, 0.4);
+}
+
+html[data-theme="dark"] #widgetPopup .popup-card.photo-history-popup-card .popup-body {
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(111, 70, 95, 0.24),
+      transparent 34%
+    ),
+    linear-gradient(180deg, rgba(35, 22, 40, 0.98), rgba(27, 18, 32, 0.98));
+}
+
+html[data-theme="dark"] #widgetPopup .popup-card.photo-history-popup-card .popup-title,
+html[data-theme="dark"] #widgetPopup .popup-card.photo-history-popup-card .photo-history-heading {
+  color: #f4deeb;
+}
+
+html[data-theme="dark"] #widgetPopup .popup-card.photo-history-popup-card .widget-clear-history-btn,
+html[data-theme="dark"] #widgetPopup .popup-card.photo-history-popup-card #closeWidgetPopup {
+  background: rgba(54, 35, 50, 0.96);
+  border-color: rgba(126, 86, 108, 0.82);
+  color: #f4deeb;
+  box-shadow: 0 10px 18px rgba(9, 5, 13, 0.2);
+}
+
+html[data-theme="dark"] .photo-history-delete-btn {
+  background: rgba(47, 32, 54, 0.96);
+  border-color: var(--border-2);
+  color: var(--text);
+  box-shadow: 0 8px 16px rgba(9, 5, 13, 0.28);
+}
+
+html[data-theme="dark"] .photo-history-delete-btn:hover {
+  background: var(--card-solid);
+}
+
+html[data-theme="dark"] .photo-history-card {
+  border-color: rgba(113, 75, 97, 0.76);
+  background:
+    linear-gradient(180deg, rgba(49, 32, 55, 0.96), rgba(38, 25, 44, 0.94));
+  box-shadow: 0 12px 22px rgba(9, 5, 13, 0.22);
+}
+
+html[data-theme="dark"] .photo-history-actor {
+  color: #f4deeb;
+}
+
+html[data-theme="dark"] .photo-history-meta .widget-history-time {
+  color: #c7a8ba;
 }
 
 html[data-theme="dark"] .popup-header,
@@ -1215,7 +1289,7 @@ body.dragging-widget {
   text-align: center;
   min-height: 48px;
   border-radius: 999px;
-  border: 2px solid var(--border-2);
+  border: 1.5px solid var(--button-border-strong);
   color: var(--text);
   text-decoration: none;
   font-family:
@@ -1279,7 +1353,7 @@ html[data-theme="dark"] .song-widget-volume-bar span {
 }
 
 html[data-theme="dark"] .song-widget-link {
-  border-color: var(--border-2);
+  border-color: var(--button-border-strong);
   color: var(--text);
   background: transparent;
   box-shadow: none;
@@ -1594,6 +1668,42 @@ html[data-theme="dark"] .photo-color-trigger {
   max-width: 520px;
 }
 
+#widgetPopup .popup-card.photo-history-popup-card {
+  max-width: min(760px, calc(100vw - 32px));
+  border-color: rgba(190, 122, 151, 0.46);
+  background:
+    linear-gradient(180deg, rgba(255, 250, 252, 0.98), rgba(255, 246, 250, 0.96));
+  box-shadow: 0 24px 56px rgba(198, 133, 160, 0.2);
+}
+
+#widgetPopup .popup-card.photo-history-popup-card .popup-header {
+  background: linear-gradient(180deg, #f3ccd9, #efbfd1);
+  border-bottom: 1px solid rgba(214, 157, 179, 0.34);
+}
+
+#widgetPopup .popup-card.photo-history-popup-card .popup-body {
+  background:
+    radial-gradient(
+      circle at top right,
+      rgba(248, 223, 233, 0.32),
+      transparent 34%
+    ),
+    linear-gradient(180deg, rgba(255, 252, 253, 0.98), rgba(255, 247, 250, 0.96));
+}
+
+#widgetPopup .popup-card.photo-history-popup-card .popup-title,
+#widgetPopup .popup-card.photo-history-popup-card .photo-history-heading {
+  color: #6b4458;
+}
+
+#widgetPopup .popup-card.photo-history-popup-card .widget-clear-history-btn,
+#widgetPopup .popup-card.photo-history-popup-card #closeWidgetPopup {
+  background: rgba(255, 253, 254, 0.94);
+  border-color: rgba(210, 157, 178, 0.78);
+  color: #6b4458;
+  box-shadow: 0 10px 18px rgba(198, 133, 160, 0.1);
+}
+
 #widgetEditorFields {
   display: flex;
   flex-direction: column;
@@ -1719,6 +1829,123 @@ html[data-theme="dark"] .photo-color-trigger {
   word-break: break-word;
 }
 
+.photo-history {
+  display: grid;
+  gap: 16px;
+}
+
+.photo-history-group {
+  display: grid;
+  gap: 10px;
+}
+
+.photo-history-heading {
+  margin: 0;
+  font-size: 1.15rem;
+  font-family:
+    "Fredoka", "Noto Sans", "Noto Sans Symbols 2", "Noto Sans Batak",
+    "Segoe UI Symbol", sans-serif;
+}
+
+.photo-history-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 148px));
+  gap: 10px;
+  align-items: start;
+  justify-content: start;
+}
+
+.photo-history-card {
+  position: relative;
+  border: 1px solid rgba(232, 182, 199, 0.86);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 254, 254, 0.96), rgba(255, 247, 250, 0.94));
+  padding: 6px;
+  box-shadow: 0 10px 18px rgba(198, 133, 160, 0.12);
+}
+
+.photo-history-delete-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(216, 165, 185, 0.78);
+  border-radius: 999px;
+  background: rgba(255, 250, 253, 0.98);
+  color: #7d5267;
+  font-size: 0.82rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(198, 133, 160, 0.16);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+  z-index: 2;
+}
+
+.photo-history-delete-btn:hover {
+  transform: scale(1.06);
+  background: #fffdfd;
+  box-shadow: 0 10px 18px rgba(198, 133, 160, 0.2);
+}
+
+.photo-history-frame {
+  position: relative;
+  container-type: inline-size;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fffdfd, #f6e6ee);
+}
+
+.photo-history-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.photo-history-text {
+  position: absolute;
+  left: 50%;
+  top: 86%;
+  transform: translate(-50%, -50%);
+  font-family:
+    "Fredoka", "Noto Sans", "Noto Sans Symbols 2", "Noto Sans Batak",
+    "Segoe UI Symbol", sans-serif;
+  font-size: clamp(8px, calc(var(--photo-text-size, 22) / 360 * 100cqw), 18px);
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  text-shadow: 0 3px 14px rgba(0, 0, 0, 0.35);
+  max-width: 84%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.photo-history-meta {
+  display: grid;
+  gap: 2px;
+  padding: 6px 2px 0;
+}
+
+.photo-history-actor {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: #6b4458;
+}
+
+.photo-history-meta .widget-history-time {
+  color: #9a7485;
+  white-space: nowrap;
+}
+
 .widget.dragging {
   transform: none !important;
   transition: none !important;
@@ -1770,7 +1997,7 @@ html[data-theme="dark"] .photo-color-trigger {
 .soft-btn.widget-miss-you-btn,
 .widget .widget-content a.soft-btn,
 .widget .widget-content button.soft-btn {
-  border: 2px solid var(--border-2);
+  border: 1.5px solid var(--button-border-strong);
   background: transparent;
   color: var(--text);
   border-radius: 999px;
@@ -4451,6 +4678,10 @@ html[data-theme="dark"] .typed-sticker-preview:focus-visible {
     border-radius: 22px;
   }
 
+  #widgetPopup .popup-card.photo-history-popup-card {
+    max-width: none;
+  }
+
   .popup-header {
     padding: 10px 14px;
     align-items: center;
@@ -4498,6 +4729,31 @@ html[data-theme="dark"] .typed-sticker-preview:focus-visible {
   .popup-body,
   #widgetPopup .popup-body {
     padding: 14px;
+  }
+
+  .photo-history-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .photo-history-card {
+    border-radius: 18px;
+    padding: 8px;
+  }
+
+  .photo-history-heading {
+    font-size: 1.15rem;
+  }
+
+  .photo-history-delete-btn {
+    top: 6px;
+    right: 6px;
+    width: 26px;
+    height: 26px;
+  }
+
+  .photo-history-meta {
+    padding: 8px 2px 0;
   }
 
   .popup-actions {

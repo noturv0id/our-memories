@@ -710,6 +710,7 @@ const widgetPopupLikeBtn = document.getElementById("widgetPopupLikeBtn");
 const widgetEditorFields = document.getElementById("widgetEditorFields");
 const saveWidgetBtn = document.getElementById("saveWidgetBtn");
 const clearWidgetHistoryBtn = document.getElementById("clearWidgetHistoryBtn");
+const widgetPopupCard = widgetPopup?.querySelector(".popup-card") || null;
 const entryPreviewPopup = document.getElementById("entryPreviewPopup");
 const closeEntryPreviewPopup = document.getElementById(
   "closeEntryPreviewPopup",
@@ -3511,7 +3512,7 @@ function renderWidgets() {
         renderItem.sourceId === "entry-preview";
       const canEditEntryPreviewWidget = !isEntryPreviewWidget || isTotoUser();
 
-      const hasHistory = normalizedId === "song" || isNoteWidget;
+      const hasHistory = normalizedId === "song" || isNoteWidget || isPhotoWidget;
 
       const isEditable =
         ["song", "memories", "love"].includes(normalizedId) ||
@@ -3845,7 +3846,11 @@ function toggleWidgetMinimized(widgetId) {
 function openWidgetEditor(widgetId) {
   dragWidget = null;
   pendingWidgetDrag = null;
-  if (clearWidgetHistoryBtn) clearWidgetHistoryBtn.style.display = "none";
+  widgetPopupCard?.classList.remove("photo-history-popup-card");
+  if (clearWidgetHistoryBtn) {
+    clearWidgetHistoryBtn.style.display = "none";
+    delete clearWidgetHistoryBtn.dataset.clearWidgetHistoryMode;
+  }
   setWidgetPopupLikeButton(null);
 
   const normalizedId = String(widgetId || "")
@@ -4841,6 +4846,10 @@ async function saveWidgetToSupabase(widget, options = {}) {
     markWidgetContentUpdated(widget);
   }
 
+  if (recordHistory) {
+    recordWidgetHistory(widget);
+  }
+
   const payload = {
     title: widget.title,
     side: widget.side,
@@ -4878,10 +4887,6 @@ async function saveWidgetToSupabase(widget, options = {}) {
       }
       return false;
     }
-  }
-
-  if (recordHistory) {
-    recordWidgetHistory(widget);
   }
 
   widget.updated_at = payload.updated_at;
@@ -6022,19 +6027,27 @@ deleteEntryPopup?.addEventListener("click", (event) => {
 
 closeWidgetPopup.addEventListener("click", () => {
   widgetPopup.classList.remove("open");
+  widgetPopupCard?.classList.remove("photo-history-popup-card");
   saveWidgetBtn.style.display = "inline-flex";
   setHeaderWidgetSaveVisibility(false);
   setWidgetPopupLikeButton(null);
-  if (clearWidgetHistoryBtn) clearWidgetHistoryBtn.style.display = "none";
+  if (clearWidgetHistoryBtn) {
+    clearWidgetHistoryBtn.style.display = "none";
+    delete clearWidgetHistoryBtn.dataset.clearWidgetHistoryMode;
+  }
 });
 
 widgetPopup.addEventListener("click", (event) => {
   if (event.target === widgetPopup && !popupPointerStartedInsideCard) {
     widgetPopup.classList.remove("open");
+    widgetPopupCard?.classList.remove("photo-history-popup-card");
     saveWidgetBtn.style.display = "inline-flex";
     setHeaderWidgetSaveVisibility(false);
     setWidgetPopupLikeButton(null);
-    if (clearWidgetHistoryBtn) clearWidgetHistoryBtn.style.display = "none";
+    if (clearWidgetHistoryBtn) {
+      clearWidgetHistoryBtn.style.display = "none";
+      delete clearWidgetHistoryBtn.dataset.clearWidgetHistoryMode;
+    }
   }
 });
 
@@ -6085,15 +6098,38 @@ if (widgetPopupLikeBtn) {
   });
 }
 if (clearWidgetHistoryBtn) {
-  clearWidgetHistoryBtn.addEventListener("click", () => {
+  clearWidgetHistoryBtn.addEventListener("click", async () => {
     const widgetId = clearWidgetHistoryBtn.dataset.clearWidgetHistoryId;
+    const historyMode = clearWidgetHistoryBtn.dataset.clearWidgetHistoryMode;
     const widget = widgets.find((item) => item.id === widgetId);
     if (!widget) return;
 
-    const shouldClear = window.confirm(`Clear history for ${widget.title}?`);
+    const confirmText =
+      historyMode === "photo-combined"
+        ? "Clear history for both pin it widgets?"
+        : `Clear history for ${widget.title}?`;
+    const shouldClear = window.confirm(confirmText);
     if (!shouldClear) return;
 
-    clearWidgetHistory(widget.id);
+    if (historyMode === "photo-combined") {
+      const photoWidgets = getAllPhotoPinWidgets();
+      for (const photoWidget of photoWidgets) {
+        clearWidgetHistory(photoWidget.id);
+        await saveWidgetToSupabase(photoWidget, {
+          recordHistory: false,
+          suppressErrorMessage: false,
+          notifyUpdate: false,
+        });
+      }
+    } else {
+      clearWidgetHistory(widget.id);
+      await saveWidgetToSupabase(widget, {
+        recordHistory: false,
+        suppressErrorMessage: false,
+        notifyUpdate: false,
+      });
+    }
+
     openWidgetHistory(widget.id);
     showMessage("history cleared ♡");
   });
@@ -6162,12 +6198,308 @@ function unmarkPostAsEdited(postId) {
 
 function getWidgetHistoryEntries(widgetId) {
   try {
-    const raw = localStorage.getItem(`widgetHistory:${widgetId}`);
+    const widget =
+      typeof widgetId === "object" && widgetId
+        ? widgetId
+        : widgets.find((item) => item.id === widgetId);
+    const storageWidgetId =
+      typeof widgetId === "object" ? widgetId?.id || "" : widgetId;
+    const sharedHistory = Array.isArray(widget?.data?.history)
+      ? widget.data.history
+      : [];
+    const raw = localStorage.getItem(`widgetHistory:${storageWidgetId}`);
     const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    const legacyHistory = Array.isArray(parsed) ? parsed : [];
+
+    return [...sharedHistory, ...legacyHistory]
+      .filter((entry) => entry && typeof entry === "object")
+      .filter(
+        (entry, index, entries) =>
+          entries.findIndex(
+            (candidate) =>
+              candidate?.savedAt === entry?.savedAt &&
+              candidate?.summary === entry?.summary &&
+              candidate?.title === entry?.title &&
+              candidate?.actorId === entry?.actorId,
+          ) === index,
+      )
+      .sort(
+        (a, b) =>
+          new Date(b?.savedAt || 0).getTime() -
+          new Date(a?.savedAt || 0).getTime(),
+      );
   } catch (error) {
     return [];
   }
+}
+
+function isPhotoPinWidget(widget) {
+  const normalizedId = String(widget?.id || "")
+    .toLowerCase()
+    .trim();
+  const normalizedTitle = String(widget?.title || "").toLowerCase();
+
+  return (
+    normalizedId.startsWith("photo-pin") ||
+    normalizedTitle.includes("pinned photo") ||
+    normalizedTitle.includes("pinned") ||
+    normalizedTitle.includes("pin it")
+  );
+}
+
+function getAllPhotoPinWidgets() {
+  return widgets.filter((widget) => isPhotoPinWidget(widget));
+}
+
+function getWidgetHistoryActorName(entry) {
+  const savedName = String(entry?.actorName || "").trim();
+  if (savedName) return savedName;
+
+  const actorId = String(entry?.actorId || "").trim();
+  if (!actorId) {
+    return entry?.side === "left"
+      ? "left side"
+      : entry?.side === "right"
+        ? "right side"
+        : "someone";
+  }
+
+  if (currentProfile?.id === actorId) {
+    return getProfileDisplayName(currentProfile, "you");
+  }
+
+  const matchingProfile = knownProfiles.find((profile) => profile?.id === actorId);
+  return getProfileDisplayName(matchingProfile, "someone");
+}
+
+function getPhotoHistoryEntries(widget) {
+  if (!widget?.data || typeof widget.data !== "object") {
+    return [];
+  }
+
+  const entries = Array.isArray(widget.data.photoHistory) ? widget.data.photoHistory : [];
+  return entries.map((entry) => ({
+    ...entry,
+    sourceWidgetId: entry?.sourceWidgetId || widget.id,
+    sourceWidgetTitle: entry?.sourceWidgetTitle || widget.title || "",
+  }));
+}
+
+function getPhotoHistorySnapshotSignature(entry) {
+  return JSON.stringify({
+    image: entry?.image || "",
+    text: entry?.text || "",
+    textColor: entry?.textColor || "",
+    textSize: Number(entry?.textSize) || 22,
+    textX: Number(entry?.textX) || 50,
+    textY: Number(entry?.textY) || 86,
+    rotate: Number(entry?.rotate) || 0,
+  });
+}
+
+function recordPhotoPinHistory(widget) {
+  if (!isPhotoPinWidget(widget)) return;
+
+  const currentData =
+    widget?.data && typeof widget.data === "object" ? widget.data : {};
+  const image = String(currentData.image || "").trim();
+
+  if (!image) return;
+
+  const existing = getPhotoHistoryEntries(widget);
+  const nextEntry = {
+    id: crypto.randomUUID ? crypto.randomUUID() : `photo-history-${Date.now()}`,
+    savedAt: new Date().toISOString(),
+    actorId: currentProfile?.id || currentUser?.id || "",
+    actorName: getProfileDisplayName(currentProfile, "someone"),
+    sourceWidgetId: widget.id,
+    sourceWidgetTitle: widget.title || "",
+    image,
+    text: String(currentData.text || ""),
+    textColor: normalizeHexColor(currentData.textColor, "#ffffff"),
+    textSize: Math.max(12, Math.min(46, Number(currentData.textSize) || 22)),
+    textX: Math.max(0, Math.min(100, Number(currentData.textX) || 50)),
+    textY: Math.max(0, Math.min(100, Number(currentData.textY) || 86)),
+    rotate: Number(currentData.rotate) || 0,
+  };
+
+  if (
+    existing.length &&
+    getPhotoHistorySnapshotSignature(existing[0]) ===
+      getPhotoHistorySnapshotSignature(nextEntry)
+  ) {
+    return;
+  }
+
+  widget.data = {
+    ...currentData,
+    photoHistory: [nextEntry, ...existing].slice(0, 36),
+  };
+}
+
+function getCombinedPhotoHistoryEntries() {
+  return getAllPhotoPinWidgets()
+    .flatMap((widget) => getPhotoHistoryEntries(widget))
+    .sort(
+      (a, b) =>
+        new Date(b?.savedAt || 0).getTime() - new Date(a?.savedAt || 0).getTime(),
+    );
+}
+
+function groupPhotoHistoryEntries(entries) {
+  const groups = [];
+
+  entries.forEach((entry) => {
+    const savedAt = entry?.savedAt ? new Date(entry.savedAt) : null;
+    const label =
+      savedAt && !Number.isNaN(savedAt.getTime())
+        ? savedAt.toLocaleDateString("en-US", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })
+        : "memories";
+    const lastGroup = groups[groups.length - 1];
+
+    if (lastGroup && lastGroup.label === label) {
+      lastGroup.entries.push(entry);
+      return;
+    }
+
+    groups.push({
+      label,
+      entries: [entry],
+    });
+  });
+
+  return groups;
+}
+
+function renderPhotoHistoryPopup(widget) {
+  widgetPopupCard?.classList.add("photo-history-popup-card");
+  const photoHistoryEntries = getCombinedPhotoHistoryEntries();
+  widgetPopupTitle.textContent = "pin it history";
+  saveWidgetBtn.style.display = "none";
+  setHeaderWidgetSaveVisibility(false);
+  setWidgetPopupLikeButton(null);
+
+  if (clearWidgetHistoryBtn) {
+    clearWidgetHistoryBtn.style.display = photoHistoryEntries.length
+      ? "inline-flex"
+      : "none";
+    clearWidgetHistoryBtn.dataset.clearWidgetHistoryId = widget.id;
+    clearWidgetHistoryBtn.dataset.clearWidgetHistoryMode = "photo-combined";
+  }
+
+  if (!photoHistoryEntries.length) {
+    widgetEditorFields.innerHTML =
+      '<div class="small-note">no pinned photos yet ♡</div>';
+    widgetPopup.classList.add("open");
+    return;
+  }
+
+  const groupedEntries = groupPhotoHistoryEntries(photoHistoryEntries);
+  widgetEditorFields.innerHTML = `
+    <div class="photo-history">
+      ${groupedEntries
+        .map(
+          (group) => `
+        <section class="photo-history-group">
+          <h4 class="photo-history-heading">${escapeHtml(group.label)}</h4>
+          <div class="photo-history-grid">
+            ${group.entries
+              .map((entry) => {
+                const overlayText = escapeHtml(entry.text || "");
+                const actorName = escapeHtml(getWidgetHistoryActorName(entry));
+                const textColor = escapeHtml(
+                  normalizeHexColor(entry.textColor, "#ffffff"),
+                );
+                const textSize = Math.max(
+                  12,
+                  Math.min(46, Number(entry.textSize) || 22),
+                );
+                const textX = Math.max(
+                  0,
+                  Math.min(100, Number(entry.textX) || 50),
+                );
+                const textY = Math.max(
+                  0,
+                  Math.min(100, Number(entry.textY) || 86),
+                );
+                const rotate = Number(entry.rotate) || 0;
+
+                return `
+                  <article class="photo-history-card">
+                    <button
+                      class="photo-history-delete-btn"
+                      type="button"
+                      data-photo-history-delete-id="${escapeHtml(entry.id || "")}"
+                      data-photo-history-source-widget-id="${escapeHtml(entry.sourceWidgetId || "")}"
+                      aria-label="delete pinned photo from history"
+                      title="delete from history"
+                    >
+                      ×
+                    </button>
+                    <div class="photo-history-frame">
+                      <img
+                        class="photo-history-image"
+                        src="${escapeHtml(entry.image || "")}"
+                        alt="pinned photo history"
+                        style="transform:rotate(${rotate}deg);"
+                      />
+                      ${
+                        overlayText
+                          ? `<div class="photo-history-text" style="left:${textX}%;top:${textY}%;color:${textColor};--photo-text-size:${textSize};">${overlayText}</div>`
+                          : ""
+                      }
+                    </div>
+                    <div class="photo-history-meta">
+                      <div class="photo-history-actor">${actorName}</div>
+                      <div class="widget-history-time">${formatEntryDate(entry.savedAt)}</div>
+                    </div>
+                  </article>
+                `;
+              })
+              .join("")}
+          </div>
+        </section>
+      `,
+        )
+        .join("")}
+    </div>
+  `;
+
+  widgetEditorFields
+    .querySelectorAll("[data-photo-history-delete-id]")
+    .forEach((button) => {
+      button.addEventListener("click", async () => {
+        const entryId = String(button.dataset.photoHistoryDeleteId || "").trim();
+        const sourceWidgetId = String(
+          button.dataset.photoHistorySourceWidgetId || "",
+        ).trim();
+        const sourceWidget = widgets.find((item) => item.id === sourceWidgetId);
+        if (!entryId || !sourceWidget) return;
+
+        sourceWidget.data = {
+          ...(sourceWidget.data && typeof sourceWidget.data === "object"
+            ? sourceWidget.data
+            : {}),
+          photoHistory: getPhotoHistoryEntries(sourceWidget).filter(
+            (entry) => entry?.id !== entryId,
+          ),
+        };
+
+        await saveWidgetToSupabase(sourceWidget, {
+          recordHistory: false,
+          notifyUpdate: false,
+          suppressErrorMessage: false,
+        });
+        renderWidgets();
+        renderPhotoHistoryPopup(widget);
+      });
+    });
+
+  widgetPopup.classList.add("open");
 }
 
 function summarizeWidgetHistory(widget) {
@@ -6207,6 +6539,7 @@ function summarizeWidgetHistory(widget) {
 
 function recordWidgetHistory(widget) {
   try {
+    recordPhotoPinHistory(widget);
     const existing = getWidgetHistoryEntries(widget.id);
     const summary = summarizeWidgetHistory(widget);
     const previousEntry = existing[0];
@@ -6222,9 +6555,16 @@ function recordWidgetHistory(widget) {
       savedAt: new Date().toISOString(),
       summary,
       title: widget.title || "",
+      actorId: currentProfile?.id || currentUser?.id || "",
+      actorName: getProfileDisplayName(currentProfile, "someone"),
       side: widget.side || "",
       x: widget.x ?? null,
       y: widget.y ?? null,
+    };
+
+    widget.data = {
+      ...(widget.data && typeof widget.data === "object" ? widget.data : {}),
+      history: [nextEntry, ...existing].slice(0, 20),
     };
 
     localStorage.setItem(
@@ -6238,6 +6578,14 @@ function recordWidgetHistory(widget) {
 
 function clearWidgetHistory(widgetId) {
   try {
+    const widget = widgets.find((item) => item.id === widgetId);
+    if (widget) {
+      widget.data = {
+        ...(widget.data && typeof widget.data === "object" ? widget.data : {}),
+        history: [],
+        photoHistory: [],
+      };
+    }
     localStorage.removeItem(`widgetHistory:${widgetId}`);
   } catch (error) {
     console.error(error);
@@ -6248,7 +6596,13 @@ function openWidgetHistory(widgetId) {
   const widget = widgets.find((item) => item.id === widgetId);
   if (!widget) return;
 
-  const historyEntries = getWidgetHistoryEntries(widget.id);
+  if (isPhotoPinWidget(widget)) {
+    renderPhotoHistoryPopup(widget);
+    return;
+  }
+
+  widgetPopupCard?.classList.remove("photo-history-popup-card");
+  const historyEntries = getWidgetHistoryEntries(widget);
   widgetPopupTitle.textContent = `${widget.title} history`;
   saveWidgetBtn.style.display = "none";
   setHeaderWidgetSaveVisibility(false);
@@ -6258,6 +6612,7 @@ function openWidgetHistory(widgetId) {
       ? "inline-flex"
       : "none";
     clearWidgetHistoryBtn.dataset.clearWidgetHistoryId = widget.id;
+    delete clearWidgetHistoryBtn.dataset.clearWidgetHistoryMode;
   }
 
   widgetEditorFields.innerHTML = historyEntries.length
@@ -6268,6 +6623,7 @@ function openWidgetHistory(widgetId) {
             (entry) => `
           <div class="widget-history-item">
             <div class="widget-history-time">${formatEntryDate(entry.savedAt)}</div>
+            <div class="widget-history-summary">${escapeHtml(getWidgetHistoryActorName(entry))}</div>
             <div class="widget-history-summary">${escapeHtml(entry.summary || "widget update")}</div>
           </div>
         `,
@@ -6534,13 +6890,28 @@ function formatNotificationRelativeTime(dateString) {
   return formatEntryDate(dateString);
 }
 
-function getNotificationTypeLabel(type) {
+function getNotificationActorPronoun(profile) {
+  const identity =
+    `${profile?.nickname || ""} ${profile?.username || ""}`.toLowerCase();
+
+  if (identity.includes("toto")) return "he";
+  if (identity.includes("dodo")) return "she";
+  return "they";
+}
+
+function getNotificationTypeLabel(notificationOrType) {
+  const notification =
+    notificationOrType && typeof notificationOrType === "object"
+      ? notificationOrType
+      : { type: notificationOrType };
+  const { type } = notification;
+
   if (type === "reply") return "reply";
   if (type === "comment") return "comment";
   if (type === "post_like") return "like";
   if (type === "comment_like") return "comment like";
   if (type === "widget_like") return "widget like";
-  if (type === "miss_you") return "miss you";
+  if (type === "miss_you") return `${notification.actorPronoun || "they"} misses you`;
   if (type === "poem") return "poem";
   if (type === "widget_update") return "widget";
   if (type === "sticker") return "sticker";
@@ -6655,7 +7026,7 @@ function renderNotifications() {
           data-notification-open-comments="${item.openComments ? "true" : "false"}"
         >
           <div class="notification-topline">
-            <span class="notification-type">${getNotificationTypeLabel(item.type)}</span>
+            <span class="notification-type">${getNotificationTypeLabel(item)}</span>
             <span class="notification-time">${formatNotificationRelativeTime(item.created_at)}</span>
           </div>
           <div class="notification-message">${item.message}</div>
@@ -6896,6 +7267,7 @@ function buildNotifications({
       nextNotifications.push({
         id: `widget-update:${widget.id}:${lastUpdatedAt}`,
         type: getWidgetUpdateNotificationType(widget),
+        actorPronoun: getNotificationActorPronoun(actorProfile),
         created_at: lastUpdatedAt,
         widgetId: widget.id,
         openComments: false,
