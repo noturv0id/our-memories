@@ -4973,11 +4973,10 @@ function renderTimeline() {
   }
 
   posts.forEach((post) => {
-    const avatarHtml = post.avatarUrl
-      ? `<img class="post-avatar" src="${post.avatarUrl}" alt="${post.nickname || "profile"}" />`
-      : `<div class="post-avatar"></div>`;
-
     const isOwner = currentProfile && post.userId === currentProfile.id;
+    const avatarHtml = post.avatarUrl
+      ? `<img class="post-avatar${isOwner ? " post-avatar-editable" : ""}" src="${post.avatarUrl}" alt="${post.nickname || "profile"}"${isOwner ? ' role="button" tabindex="0" aria-label="change avatar" title="change avatar"' : ""} />`
+      : `<div class="post-avatar${isOwner ? " post-avatar-editable" : ""}"${isOwner ? ' role="button" tabindex="0" aria-label="change avatar" title="change avatar"' : ""}></div>`;
 
     const postEl = document.createElement("article");
     postEl.className = "post";
@@ -4991,7 +4990,7 @@ function renderTimeline() {
         <div class="post-meta">
           ${avatarHtml}
           <div class="post-author-text">
-            <span class="post-author-name">${post.nickname || post.author}</span>
+            <span class="post-author-name${isOwner ? " post-author-name-editable" : ""}"${isOwner ? ' role="button" tabindex="0" aria-label="edit displayed name" title="edit name"' : ""}>${post.nickname || post.author}</span>
             <span>${post.author}</span>
           </div>
        </div>
@@ -5043,6 +5042,101 @@ function renderTimeline() {
     renderLinkPreviews(postTextEl, postEl.querySelector(".link-preview-list"));
 
     const postBody = postEl.querySelector(".post-body");
+    const avatarEl = postEl.querySelector(".post-avatar");
+    const authorNameEl = postEl.querySelector(".post-author-name");
+
+    if (isOwner && avatarEl) {
+      const openAvatarPicker = (triggerEvent) => {
+        triggerEvent?.preventDefault?.();
+        triggerEvent?.stopPropagation?.();
+
+        const pickerInput = document.createElement("input");
+        pickerInput.type = "file";
+        pickerInput.accept = "image/*";
+
+        pickerInput.addEventListener("change", async () => {
+          const file = pickerInput.files?.[0];
+          if (!file) return;
+          await saveInlinePostAvatar(file);
+        });
+
+        pickerInput.click();
+      };
+
+      avatarEl.addEventListener("click", openAvatarPicker);
+      avatarEl.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        openAvatarPicker(event);
+      });
+    }
+
+    if (isOwner && authorNameEl) {
+      const openInlineNameEditor = (triggerEvent) => {
+        triggerEvent?.preventDefault?.();
+        triggerEvent?.stopPropagation?.();
+        if (authorNameEl.querySelector("input")) return;
+
+        const currentName = String(currentProfile?.nickname || post.nickname || "")
+          .trim();
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "post-author-name-input";
+        input.maxLength = 60;
+        input.value = currentName;
+        input.setAttribute("aria-label", "edit displayed name");
+
+        authorNameEl.textContent = "";
+        authorNameEl.appendChild(input);
+        input.focus();
+        input.select();
+        let didFinish = false;
+
+        const finish = async (shouldSave) => {
+          if (didFinish) return;
+          didFinish = true;
+          const nextName = input.value.trim();
+          authorNameEl.textContent = currentName || post.author;
+
+          if (!shouldSave || !nextName || nextName === currentName) return;
+
+          await saveInlinePostDisplayName(nextName);
+        };
+
+        ["click", "mousedown", "pointerdown"].forEach((eventName) => {
+          input.addEventListener(eventName, (event) => {
+            event.stopPropagation();
+          });
+        });
+
+        input.addEventListener("keydown", async (event) => {
+          event.stopPropagation();
+          if (event.key === "Enter") {
+            event.preventDefault();
+            await finish(true);
+          }
+
+          if (event.key === "Escape") {
+            event.preventDefault();
+            await finish(false);
+          }
+        });
+
+        input.addEventListener("blur", (event) => {
+          event.stopPropagation();
+          finish(true);
+        });
+      };
+
+      authorNameEl.addEventListener("click", openInlineNameEditor);
+      authorNameEl.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        openInlineNameEditor(event);
+      });
+    }
 
     postBody.addEventListener("dragenter", (event) => {
       if (!isStickerDragEvent(event)) return;
@@ -6233,6 +6327,63 @@ function getWidgetHistoryEntries(widgetId) {
   }
 }
 
+function updateCurrentUserHistoryActorNames(nextName) {
+  const actorId = currentProfile?.id || currentUser?.id || "";
+  const trimmedName = String(nextName || "").trim();
+
+  if (!actorId || !trimmedName) return;
+
+  widgets.forEach((widget) => {
+    if (!widget?.data || typeof widget.data !== "object") return;
+
+    if (Array.isArray(widget.data.history)) {
+      widget.data.history = widget.data.history.map((entry) =>
+        entry?.actorId === actorId
+          ? {
+              ...entry,
+              actorName: trimmedName,
+            }
+          : entry,
+      );
+    }
+
+    if (Array.isArray(widget.data.photoHistory)) {
+      widget.data.photoHistory = widget.data.photoHistory.map((entry) =>
+        entry?.actorId === actorId
+          ? {
+              ...entry,
+              actorName: trimmedName,
+            }
+          : entry,
+      );
+    }
+
+    try {
+      const storageKey = `widgetHistory:${widget.id}`;
+      const raw = localStorage.getItem(storageKey);
+      const parsed = raw ? JSON.parse(raw) : [];
+
+      if (Array.isArray(parsed)) {
+        localStorage.setItem(
+          storageKey,
+          JSON.stringify(
+            parsed.map((entry) =>
+              entry?.actorId === actorId
+                ? {
+                    ...entry,
+                    actorName: trimmedName,
+                  }
+                : entry,
+            ),
+          ),
+        );
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  });
+}
+
 function isPhotoPinWidget(widget) {
   const normalizedId = String(widget?.id || "")
     .toLowerCase()
@@ -6295,20 +6446,26 @@ function getLegacyHistoryActorName(entry) {
 }
 
 function getWidgetHistoryActorName(entry) {
+  const actorId = String(entry?.actorId || "").trim();
+  if (actorId) {
+    if (currentProfile?.id === actorId) {
+      return getProfileDisplayName(currentProfile, "you");
+    }
+
+    const matchingProfile = knownProfiles.find((profile) => profile?.id === actorId);
+    if (matchingProfile) {
+      return getProfileDisplayName(matchingProfile, "someone");
+    }
+  }
+
   const savedName = String(entry?.actorName || "").trim();
   if (savedName) return savedName;
 
-  const actorId = String(entry?.actorId || "").trim();
   if (!actorId) {
     return getLegacyHistoryActorName(entry);
   }
 
-  if (currentProfile?.id === actorId) {
-    return getProfileDisplayName(currentProfile, "you");
-  }
-
-  const matchingProfile = knownProfiles.find((profile) => profile?.id === actorId);
-  return getProfileDisplayName(matchingProfile, "someone");
+  return "someone";
 }
 
 function getPhotoHistoryEntries(widget) {
@@ -6659,10 +6816,10 @@ function openWidgetHistory(widgetId) {
       <div class="widget-history-list">
         ${historyEntries
           .map(
-            (entry) => `
+            (entry, index) => `
           <div class="widget-history-item">
             <div class="widget-history-time">${formatEntryDate(entry.savedAt)}</div>
-            <div class="widget-history-summary">${escapeHtml(getWidgetHistoryActorName(entry))}</div>
+            <div class="widget-history-summary${entry?.actorId === (currentProfile?.id || currentUser?.id || "") ? " widget-history-actor-editable" : ""}" ${entry?.actorId === (currentProfile?.id || currentUser?.id || "") ? `role="button" tabindex="0" aria-label="edit displayed name" title="edit name" data-widget-history-actor-index="${index}"` : ""}>${escapeHtml(getWidgetHistoryActorName(entry))}</div>
             <div class="widget-history-summary">${escapeHtml(entry.summary || "widget update")}</div>
           </div>
         `,
@@ -6671,6 +6828,75 @@ function openWidgetHistory(widgetId) {
       </div>
     `
     : `<div class="small-note">no widget history yet ♡</div>`;
+
+  widgetEditorFields
+    .querySelectorAll("[data-widget-history-actor-index]")
+    .forEach((actorEl) => {
+      const openHistoryNameEditor = (triggerEvent) => {
+        triggerEvent?.preventDefault?.();
+        triggerEvent?.stopPropagation?.();
+        if (actorEl.querySelector("input")) return;
+
+        const currentName = String(currentProfile?.nickname || actorEl.textContent || "")
+          .trim();
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "post-author-name-input";
+        input.maxLength = 60;
+        input.value = currentName;
+        input.setAttribute("aria-label", "edit displayed name");
+
+        actorEl.textContent = "";
+        actorEl.appendChild(input);
+        input.focus();
+        input.select();
+        let didFinish = false;
+
+        const finish = async (shouldSave) => {
+          if (didFinish) return;
+          didFinish = true;
+          const nextName = input.value.trim();
+          actorEl.textContent = currentName || "someone";
+
+          if (!shouldSave || !nextName || nextName === currentName) return;
+
+          await saveInlinePostDisplayName(nextName);
+          openWidgetHistory(widget.id);
+        };
+
+        ["click", "mousedown", "pointerdown"].forEach((eventName) => {
+          input.addEventListener(eventName, (event) => {
+            event.stopPropagation();
+          });
+        });
+
+        input.addEventListener("keydown", async (event) => {
+          event.stopPropagation();
+          if (event.key === "Enter") {
+            event.preventDefault();
+            await finish(true);
+          }
+
+          if (event.key === "Escape") {
+            event.preventDefault();
+            await finish(false);
+          }
+        });
+
+        input.addEventListener("blur", (event) => {
+          event.stopPropagation();
+          finish(true);
+        });
+      };
+
+      actorEl.addEventListener("click", openHistoryNameEditor);
+      actorEl.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        openHistoryNameEditor(event);
+      });
+    });
 
   widgetPopup.classList.add("open");
 }
@@ -7778,6 +8004,72 @@ function setPasswordVisibility(isVisible) {
   passwordToggleBtn.setAttribute("aria-pressed", String(isVisible));
 }
 
+async function updateCurrentUserProfile(profileUpdates = {}) {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    showMessage("please log in first ♡");
+    return null;
+  }
+
+  const loadedProfile = currentProfile || (await loadProfile(user));
+  if (!loadedProfile?.id) {
+    showMessage("could not find your profile ♡");
+    return null;
+  }
+
+  const nextProfilePayload = {
+    username: loadedProfile.username,
+    nickname: loadedProfile.nickname,
+    avatar_url: loadedProfile.avatar_url || null,
+    ...profileUpdates,
+  };
+
+  const { data: savedProfile, error } = await supabaseClient
+    .from("profiles")
+    .update(nextProfilePayload)
+    .eq("id", user.id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error(error);
+    showMessage(error.message);
+    return null;
+  }
+
+  currentProfile = savedProfile;
+  nicknameInput.value = currentProfile.nickname || "";
+  const hasCurrentProfile = knownProfiles.some(
+    (profile) => profile?.id === currentProfile.id,
+  );
+  knownProfiles = hasCurrentProfile
+    ? knownProfiles.map((profile) =>
+        profile?.id === currentProfile.id ? currentProfile : profile,
+      )
+    : [currentProfile, ...knownProfiles];
+
+  return savedProfile;
+}
+
+async function uploadProfileAvatarFile(userId, file) {
+  const filePath = `${userId}/${Date.now()}-${file.name}`;
+
+  const { error: uploadError } = await supabaseClient.storage
+    .from("profile-pictures")
+    .upload(filePath, file);
+
+  if (uploadError) {
+    throw uploadError;
+  }
+
+  const { data } = supabaseClient.storage
+    .from("profile-pictures")
+    .getPublicUrl(filePath);
+
+  return data.publicUrl;
+}
+
 async function saveProfile() {
   const nickname = nicknameInput.value.trim();
   const file = pfpInput.files[0];
@@ -7792,22 +8084,12 @@ async function saveProfile() {
   let avatarUrl = currentProfile?.avatar_url || null;
 
   if (file) {
-    const filePath = `${user.id}/${Date.now()}-${file.name}`;
-
-    const { error: uploadError } = await supabaseClient.storage
-      .from("profile-pictures")
-      .upload(filePath, file);
-
-    if (uploadError) {
+    try {
+      avatarUrl = await uploadProfileAvatarFile(user.id, file);
+    } catch (uploadError) {
       showMessage(uploadError.message);
       return;
     }
-
-    const { data } = supabaseClient.storage
-      .from("profile-pictures")
-      .getPublicUrl(filePath);
-
-    avatarUrl = data.publicUrl;
   }
 
   const usernameBase = user.email
@@ -7816,24 +8098,15 @@ async function saveProfile() {
 
   const finalNickname = nickname || currentProfile?.nickname || usernameBase;
 
-  const { data: savedProfile, error } = await supabaseClient
-    .from("profiles")
-    .upsert({
-      id: user.id,
-      username: currentProfile?.username || usernameBase,
-      nickname: finalNickname,
-      avatar_url: avatarUrl,
-    })
-    .select()
-    .single();
+  const savedProfile = await updateCurrentUserProfile({
+    username: currentProfile?.username || usernameBase,
+    nickname: finalNickname,
+    avatar_url: avatarUrl,
+  });
 
-  if (error) {
-    console.error(error);
-    showMessage(error.message);
+  if (!savedProfile) {
     return;
   }
-
-  currentProfile = savedProfile;
 
   posts = posts.map((post) =>
     post.userId === user.id
@@ -7850,6 +8123,100 @@ async function saveProfile() {
   pfpInput.value = "";
 
   showMessage("updated! <3");
+}
+
+async function saveInlinePostDisplayName(nextNickname) {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    showMessage("please log in first ♡");
+    return;
+  }
+
+  const trimmedNickname = String(nextNickname || "").trim();
+  if (!trimmedNickname) {
+    showMessage("name can't be empty ♡");
+    return;
+  }
+
+  const usernameBase = user.email
+    ? user.email.split("@")[0]
+    : `user-${user.id.slice(0, 6)}`;
+
+  const savedProfile = await updateCurrentUserProfile({
+    username: currentProfile?.username || usernameBase,
+    nickname: trimmedNickname,
+    avatar_url: currentProfile?.avatar_url || null,
+  });
+
+  if (!savedProfile) {
+    return;
+  }
+
+  updateCurrentUserHistoryActorNames(trimmedNickname);
+  await Promise.all(
+    widgets
+      .filter(
+        (widget) =>
+          Array.isArray(widget?.data?.history) ||
+          Array.isArray(widget?.data?.photoHistory),
+      )
+      .map((widget) =>
+        saveWidgetToSupabase(widget, {
+          recordHistory: false,
+          notifyUpdate: false,
+          suppressErrorMessage: true,
+        }),
+      ),
+  );
+  showMessage("name updated ♡");
+  await loadPosts();
+}
+
+async function saveInlinePostAvatar(file) {
+  const user = await getCurrentUser();
+
+  if (!user) {
+    showMessage("please log in first ♡");
+    return;
+  }
+
+  let avatarUrl = currentProfile?.avatar_url || null;
+
+  try {
+    avatarUrl = await uploadProfileAvatarFile(user.id, file);
+  } catch (uploadError) {
+    console.error(uploadError);
+    showMessage(uploadError.message);
+    return;
+  }
+
+  const usernameBase = user.email
+    ? user.email.split("@")[0]
+    : `user-${user.id.slice(0, 6)}`;
+
+  const savedProfile = await updateCurrentUserProfile({
+    username: currentProfile?.username || usernameBase,
+    nickname: currentProfile?.nickname || usernameBase,
+    avatar_url: avatarUrl,
+  });
+
+  if (!savedProfile) {
+    return;
+  }
+
+  posts = posts.map((post) =>
+    post.userId === user.id
+      ? {
+          ...post,
+          avatarUrl: savedProfile.avatar_url || "",
+        }
+      : post,
+  );
+
+  renderTimeline();
+  pfpInput.value = "";
+  showMessage("avatar updated ♡");
 }
 
 function getPostsTimelineSelect(includeUpdatedAt = true) {

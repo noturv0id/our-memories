@@ -2214,11 +2214,21 @@ html[data-theme="dark"] .delete-entry-preview-widget-entry-btn {
   box-shadow: 0 6px 14px rgba(246, 214, 226, 0.2);
 }
 
+.post-avatar-editable {
+  cursor: pointer;
+}
+
+.post-avatar-editable:focus-visible {
+  outline: 2px solid rgba(214, 125, 168, 0.35);
+  outline-offset: 4px;
+}
+
 .post-author-text {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
+
 
 .post-edited-badge {
   display: inline-flex;
@@ -2236,6 +2246,51 @@ html[data-theme="dark"] .delete-entry-preview-widget-entry-btn {
 .post-author-name {
   font-weight: 700;
   color: var(--text);
+}
+
+.post-author-name-editable {
+  cursor: text;
+}
+
+.post-author-name-editable:focus-visible {
+  outline: 2px solid rgba(214, 125, 168, 0.35);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.post-author-name-input {
+  width: min(180px, 100%);
+  padding: 3px 8px;
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  background: rgba(255, 254, 254, 0.96);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  outline: none;
+  caret-color: var(--text);
+}
+
+html[data-theme="dark"] .post-author-name-input {
+  background: #2f2036;
+  border-color: var(--border-2);
+  color: var(--text);
+  caret-color: var(--text);
+}
+
+.post-author-name-input::selection {
+  background: rgba(216, 92, 147, 0.28);
+  color: inherit;
+}
+
+.widget-history-actor-editable {
+  cursor: text;
+}
+
+.widget-history-actor-editable:focus-visible {
+  outline: 2px solid rgba(214, 125, 168, 0.35);
+  outline-offset: 4px;
+  border-radius: 8px;
 }
 
 .post-text {
