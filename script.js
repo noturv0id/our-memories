@@ -23,6 +23,7 @@ const RECENT_GIF_STORAGE_KEY = "recentGifStickers";
 const RECENT_GIPHY_STICKER_STORAGE_KEY = "recentGiphyStickers";
 const PLACED_GIF_SIZE_STORAGE_KEY = "placedGifStickerSizes";
 const PLACED_STICKER_POSITION_STORAGE_KEY = "placedStickerPositions";
+const PROFILE_BIO_STORAGE_KEY = "profileBioByUser";
 const DEFAULT_GIF_STICKER_SIZE = 72;
 const MIN_GIF_STICKER_SIZE = 44;
 const MAX_GIF_STICKER_SIZE = 200;
@@ -2606,6 +2607,103 @@ function getProfileDisplayName(profile, fallback) {
   return name || fallback;
 }
 
+function getProfileBioFromAuthUser(user) {
+  const metadata = user?.user_metadata || {};
+  if (Object.prototype.hasOwnProperty.call(metadata, "profile_bio")) {
+    return String(metadata.profile_bio || "");
+  }
+  if (Object.prototype.hasOwnProperty.call(metadata, "bio")) {
+    return String(metadata.bio || "");
+  }
+  return null;
+}
+
+function getStoredProfileBio(userId) {
+  if (!userId) return null;
+
+  try {
+    const storedBioMap = JSON.parse(
+      localStorage.getItem(PROFILE_BIO_STORAGE_KEY) || "{}",
+    );
+
+    if (
+      storedBioMap &&
+      typeof storedBioMap === "object" &&
+      Object.prototype.hasOwnProperty.call(storedBioMap, userId)
+    ) {
+      return String(storedBioMap[userId] || "");
+    }
+  } catch (error) {
+    console.error(error);
+  }
+
+  return null;
+}
+
+function saveStoredProfileBio(userId, bio) {
+  if (!userId) return;
+
+  try {
+    const storedBioMap = JSON.parse(
+      localStorage.getItem(PROFILE_BIO_STORAGE_KEY) || "{}",
+    );
+    const nextBioMap =
+      storedBioMap && typeof storedBioMap === "object" ? storedBioMap : {};
+
+    nextBioMap[userId] = String(bio || "");
+    localStorage.setItem(PROFILE_BIO_STORAGE_KEY, JSON.stringify(nextBioMap));
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function getProfileBio(profile, userId = "", user = currentUser) {
+  if (
+    profile &&
+    typeof profile === "object" &&
+    Object.prototype.hasOwnProperty.call(profile, "bio")
+  ) {
+    return String(profile.bio || "").trim();
+  }
+
+  const metadataBio = getProfileBioFromAuthUser(user);
+  if (metadataBio !== null) {
+    return metadataBio.trim();
+  }
+
+  const storedBio = getStoredProfileBio(userId || profile?.id || "");
+  return storedBio === null ? "" : storedBio.trim();
+}
+
+async function persistProfileBioBackup(user, bio) {
+  const userId = user?.id || currentProfile?.id || "";
+  const nextBio = String(bio || "");
+
+  saveStoredProfileBio(userId, nextBio);
+
+  if (!user) return;
+
+  try {
+    const { data, error } = await supabaseClient.auth.updateUser({
+      data: {
+        ...(user.user_metadata || {}),
+        profile_bio: nextBio,
+      },
+    });
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    if (data?.user) {
+      currentUser = data.user;
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
 function mergeProfileRecords(existingProfile = {}, incomingProfile = {}) {
   const nextProfile = {
     ...(existingProfile && typeof existingProfile === "object"
@@ -2857,7 +2955,11 @@ function renderProfilePopup(profile, options = {}) {
   );
   const profileTitleEl = document.querySelector("#profilePopup .popup-title");
   const profileStats = getProfileStats(profileUserId, resolvedProfile);
-  const bio = String(resolvedProfile.bio || "").trim();
+  const bio = getProfileBio(
+    resolvedProfile,
+    profileUserId,
+    isOwnProfile ? currentUser : null,
+  );
 
   activeProfilePopupUserId = profileUserId;
 
@@ -2906,7 +3008,11 @@ function renderProfilePopup(profile, options = {}) {
       nicknameInput.value = String(currentProfile?.nickname || resolvedProfile.nickname || "");
     }
     if (bioInput) {
-      bioInput.value = String(currentProfile?.bio || resolvedProfile.bio || "");
+      bioInput.value = getProfileBio(
+        currentProfile || resolvedProfile,
+        profileUserId,
+        currentUser,
+      );
     }
     if (pfpInput) {
       pfpInput.value = "";
@@ -8163,14 +8269,22 @@ async function loadProfile(user) {
   currentProfile = data;
 
   if (currentProfile) {
+    if (!Object.prototype.hasOwnProperty.call(currentProfile, "bio")) {
+      const fallbackBio =
+        getProfileBioFromAuthUser(user) ?? getStoredProfileBio(user.id);
+      currentProfile = {
+        ...currentProfile,
+        bio: fallbackBio || "",
+      };
+    }
     upsertKnownProfile(currentProfile);
     nicknameInput.value = currentProfile.nickname || "";
     if (bioInput) {
-      bioInput.value = currentProfile.bio || "";
+      bioInput.value = getProfileBio(currentProfile, user.id, user);
     }
   }
 
-  return data;
+  return currentProfile;
 }
 
 async function loadPlacedStickers() {
@@ -8434,6 +8548,10 @@ async function updateCurrentUserProfile(profileUpdates = {}) {
     avatar_url: loadedProfile.avatar_url || null,
     ...profileUpdates,
   };
+  const hasBioUpdate = Object.prototype.hasOwnProperty.call(
+    profileUpdates,
+    "bio",
+  );
 
   let { data: savedProfile, error } = await supabaseClient
     .from("profiles")
@@ -8472,10 +8590,18 @@ async function updateCurrentUserProfile(profileUpdates = {}) {
     return null;
   }
 
+  if (hasBioUpdate) {
+    await persistProfileBioBackup(user, nextProfilePayload.bio);
+    savedProfile = {
+      ...savedProfile,
+      bio: String(nextProfilePayload.bio || ""),
+    };
+  }
+
   currentProfile = savedProfile;
   nicknameInput.value = currentProfile.nickname || "";
   if (bioInput) {
-    bioInput.value = currentProfile.bio || "";
+    bioInput.value = getProfileBio(currentProfile, user.id, currentUser || user);
   }
   upsertKnownProfile(currentProfile);
 
