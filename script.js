@@ -15,6 +15,8 @@ const WEATHER_WIDGET_LOCATIONS = [
   { label: "Hateen, Kuwait", latitude: 29.28233, longitude: 48.02874 },
   { label: "Dammam, Saudi Arabia", latitude: 26.43442, longitude: 50.10326 },
 ];
+const PROFILE_ACTIVE_WINDOW_MS = 5 * 60 * 1000;
+const PROFILE_PRESENCE_HEARTBEAT_MS = 60 * 1000;
 
 function getAnniversaryWrapperUrl() {
   return ANNIVERSARY_WRAPPER_BASE_URL;
@@ -107,7 +109,7 @@ const floatingDecor = [
   { icon: "✦", top: "64%", left: "52%", size: "18px", delay: "2.1s" },
   { icon: "☁", top: "8%", left: "72%", size: "26px", delay: "0.5s" },
 ];
-const sparkleDecor = Array.from({ length: 70 }, (_, index) => ({
+const sparkleDecor = Array.from({ length: 42 }, (_, index) => ({
   icon: "✦",
   top: `${((index * 37) % 96) + 1}%`,
   left: `${((index * 53) % 96) + 1}%`,
@@ -644,6 +646,18 @@ const minimizedWidgetIds = new Set();
 const previousMobileWidgetRects = new Map();
 let missYouSaveInFlight = false;
 let missYouSaveQueued = false;
+let liveUpdatesChannel = null;
+let liveRefreshTimer = 0;
+let liveRefreshInFlight = false;
+let liveRefreshQueued = false;
+let liveRefreshIncludeWidgets = false;
+let entrySaveInFlight = false;
+let widgetSaveInFlight = false;
+let commentSaveInFlight = false;
+let profileSaveInFlight = false;
+let profilePresenceHeartbeatId = 0;
+let profileLastSeenFieldSupported = null;
+let lastPresenceSyncAt = 0;
 let currentCommentsPostId = null;
 let replyingToCommentId = null;
 let editingWidgetId = null;
@@ -662,7 +676,7 @@ const rightZone = document.getElementById("rightZone");
 const timelineEl = document.getElementById("timeline");
 const mobileViewSwitcher = document.getElementById("mobileViewSwitcher");
 const mobileViewButtons = Array.from(
-  document.querySelectorAll("[data-mobile-view]"),
+  document.querySelectorAll(".mobile-view-btn[data-mobile-view]"),
 );
 const launchSplash = document.getElementById("launchSplash");
 const stickerPopup = document.getElementById("stickerPopup");
@@ -675,7 +689,6 @@ const typedStickerPreview = document.getElementById("typedStickerPreview");
 const emojiPickerGrid = document.getElementById("emojiPickerGrid");
 const gifPickerGrid = document.getElementById("gifPickerGrid");
 const gifSearchInput = document.getElementById("gifSearchInput");
-const gifSearchLabel = document.getElementById("gifSearchLabel");
 const gifSearchBtn = document.getElementById("gifSearchBtn");
 const gifSearchStatus = document.getElementById("gifSearchStatus");
 const closeStickerPopup = document.getElementById("closeStickerPopup");
@@ -730,10 +743,12 @@ const entryPreviewList = document.getElementById("entryPreviewList");
 let activeEntryPreviewEntries = [];
 let lastScrollY = window.scrollY || 0;
 const MOBILE_VIEW_STORAGE_KEY = "ourMemoriesMobileView";
+const THEME_STORAGE_KEY = "ourMemoriesTheme";
 const MAC_TABBED_LAYOUT_QUERY = "(min-width: 721px) and (max-width: 1500px)";
 const PHONE_LAYOUT_QUERY = "(max-width: 720px)";
-const BOOT_SPLASH_MIN_MS = 2000;
+const BOOT_SPLASH_MIN_MS = 900;
 const BOOT_SPLASH_FADE_MS = 450;
+const LIVE_REFRESH_DEBOUNCE_MS = 450;
 const bootStartedAt =
   typeof performance !== "undefined" ? performance.now() : Date.now();
 let activeMobileView = "timeline";
@@ -859,6 +874,17 @@ function applyMobileView() {
   syncMobileViewButtons();
 }
 
+function getStoredMobileView() {
+  try {
+    const storedView = localStorage.getItem(MOBILE_VIEW_STORAGE_KEY);
+    return ["timeline", "left", "right"].includes(storedView)
+      ? storedView
+      : "";
+  } catch {
+    return "";
+  }
+}
+
 function setMobileView(nextView, options = {}) {
   const { persist = true } = options;
   const allowedViews = new Set(["timeline", "left", "right"]);
@@ -941,6 +967,15 @@ function getThemeChromeColor(nextTheme) {
   );
 }
 
+function getStoredThemePreference() {
+  try {
+    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY);
+    return savedTheme === "dark" || savedTheme === "light" ? savedTheme : "";
+  } catch {
+    return "";
+  }
+}
+
 function setTheme(theme) {
   const nextTheme = theme === "dark" ? "dark" : "light";
   document.documentElement.dataset.theme = nextTheme;
@@ -974,10 +1009,15 @@ function toggleTheme() {
   setTheme(nextTheme);
 
   try {
-    localStorage.setItem("ourMemoriesTheme", nextTheme);
+    localStorage.setItem(THEME_STORAGE_KEY, nextTheme);
   } catch (error) {
     console.error(error);
   }
+}
+
+function syncThemeWithSystemPreference(event) {
+  if (getStoredThemePreference()) return;
+  setTheme(event.matches ? "dark" : "light");
 }
 
 function updateFloatingEntryButtonVisibility() {
@@ -1953,6 +1993,8 @@ function setEntryComposerFromStoredContent(content) {
 
 function renderDecor() {
   floatingDecorEl.innerHTML = "";
+  const fragment = document.createDocumentFragment();
+
   floatingDecor.forEach((item) => {
     const node = document.createElement("div");
     node.className = "decor";
@@ -1962,7 +2004,7 @@ function renderDecor() {
     if (item.right) node.style.right = item.right;
     node.style.fontSize = item.size;
     node.style.animationDelay = item.delay;
-    floatingDecorEl.appendChild(node);
+    fragment.appendChild(node);
   });
 
   sparkleDecor.forEach((item) => {
@@ -1974,8 +2016,10 @@ function renderDecor() {
     node.style.fontSize = item.size;
     node.style.animationDelay = item.delay;
     node.style.animationDuration = item.duration;
-    floatingDecorEl.appendChild(node);
+    fragment.appendChild(node);
   });
+
+  floatingDecorEl.appendChild(fragment);
 }
 
 function getWishlistItemsInDisplayOrder(items = []) {
@@ -2263,6 +2307,10 @@ function normalizeSongWidget(widget) {
       : Number.isFinite(rawData.durationMs)
         ? formatDurationLabel(rawData.durationMs)
         : "";
+  const normalizedComments = getPhotoWidgetComments({
+    id: widget.id,
+    data: rawData,
+  });
 
   const nextData = {
     spotifyUrl:
@@ -2290,6 +2338,7 @@ function normalizeSongWidget(widget) {
     ),
     likes: getWidgetLikeUserIds({ data: rawData }),
     likeTimestamps: getWidgetLikeTimestamps({ data: rawData }),
+    comments: normalizedComments,
   };
 
   const keysToKeep = [
@@ -2301,6 +2350,7 @@ function normalizeSongWidget(widget) {
     "accent",
     "likes",
     "likeTimestamps",
+    "comments",
   ];
   const hasLegacyShape =
     Object.keys(rawData).some((key) => !keysToKeep.includes(key)) ||
@@ -2889,11 +2939,98 @@ function getProfileLikeCount(userId) {
   return postAndCommentLikes + widgetLikes;
 }
 
+function getProfileLatestActivityTimestamp(userId, profile = null) {
+  if (!userId) return 0;
+
+  const candidateTimestamps = [];
+  const pushTimestamp = (value) => {
+    const timestamp = new Date(value || "").getTime();
+    if (Number.isFinite(timestamp) && timestamp > 0) {
+      candidateTimestamps.push(timestamp);
+    }
+  };
+
+  pushTimestamp(profile?.last_seen_at);
+
+  (notificationSourceData.postsData || []).forEach((post) => {
+    if (post?.user_id !== userId) return;
+    pushTimestamp(post.created_at);
+    pushTimestamp(post.updated_at);
+  });
+
+  (notificationSourceData.likesData || []).forEach((like) => {
+    if (like?.user_id === userId) {
+      pushTimestamp(like.created_at);
+    }
+  });
+
+  (notificationSourceData.commentsData || []).forEach((comment) => {
+    if (comment?.user_id === userId) {
+      pushTimestamp(comment.created_at);
+    }
+  });
+
+  (notificationSourceData.stickersData || []).forEach((sticker) => {
+    if (sticker?.user_id === userId) {
+      pushTimestamp(sticker.created_at);
+    }
+  });
+
+  widgets.forEach((widget) => {
+    const widgetData = getWidgetDataForNotifications(widget);
+
+    if (widgetData.lastUpdatedBy === userId) {
+      pushTimestamp(widgetData.lastUpdatedAt);
+    }
+
+    if (!isLikeableWidget(widget)) return;
+
+    normalizeWidgetLikesData(widget);
+    pushTimestamp(getWidgetLikeTimestamps(widget)[userId]);
+  });
+
+  return candidateTimestamps.length ? Math.max(...candidateTimestamps) : 0;
+}
+
+function getProfilePresenceInfo(userId, profile = null) {
+  const latestActivityTimestamp = getProfileLatestActivityTimestamp(
+    userId,
+    profile,
+  );
+
+  if (!latestActivityTimestamp) {
+    return {
+      state: "unknown",
+      summary: "last seen hidden",
+      timestamp: 0,
+    };
+  }
+
+  const diffMs = Math.max(0, Date.now() - latestActivityTimestamp);
+
+  if (diffMs <= PROFILE_ACTIVE_WINDOW_MS) {
+    return {
+      state: "active",
+      summary: "active now",
+      timestamp: latestActivityTimestamp,
+    };
+  }
+
+  return {
+    state: "away",
+    summary: `last seen ${formatNotificationRelativeTime(
+      new Date(latestActivityTimestamp).toISOString(),
+    )}`,
+    timestamp: latestActivityTimestamp,
+  };
+}
+
 function getProfileStats(userId, profile = null) {
   return {
     postsCount: posts.filter((post) => post?.userId === userId).length,
     likesCount: getProfileLikeCount(userId),
     joined: getProfileJoinedInfo(userId, profile),
+    presence: getProfilePresenceInfo(userId, profile),
   };
 }
 
@@ -2904,7 +3041,7 @@ function renderProfilePopupAvatar(profile) {
   const displayName = getProfileDisplayName(profile, "memory");
 
   if (avatarUrl) {
-    profileSummaryAvatar.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(displayName)}" />`;
+    profileSummaryAvatar.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="${escapeHtml(displayName)}" loading="lazy" decoding="async" />`;
     return;
   }
 
@@ -2980,7 +3117,8 @@ function renderProfilePopup(profile, options = {}) {
   }
 
   if (profileSummaryJoined) {
-    profileSummaryJoined.textContent = profileStats.joined.summary;
+    profileSummaryJoined.textContent = profileStats.presence.summary;
+    profileSummaryJoined.dataset.presenceState = profileStats.presence.state;
   }
 
   if (profileSummaryBio) {
@@ -3020,6 +3158,88 @@ function renderProfilePopup(profile, options = {}) {
   }
 
   setProfilePopupEditMode(Boolean(options.startEditing));
+}
+
+function applyLocalProfilePresence(userId, lastSeenAt) {
+  const normalizedUserId = String(userId || "").trim();
+  const normalizedLastSeenAt = String(lastSeenAt || "").trim();
+
+  if (!normalizedUserId || !normalizedLastSeenAt) return;
+
+  if (currentProfile?.id === normalizedUserId) {
+    currentProfile = {
+      ...currentProfile,
+      last_seen_at: normalizedLastSeenAt,
+    };
+  }
+
+  upsertKnownProfile({
+    id: normalizedUserId,
+    last_seen_at: normalizedLastSeenAt,
+  });
+
+  if (activeProfilePopupUserId === normalizedUserId) {
+    renderProfilePopup(getKnownProfileById(normalizedUserId, currentProfile));
+  }
+}
+
+async function touchCurrentUserPresence(options = {}) {
+  const { force = false } = options;
+  const user = await getCurrentUser();
+
+  if (!user?.id) return;
+
+  const now = Date.now();
+  if (!force && now - lastPresenceSyncAt < PROFILE_PRESENCE_HEARTBEAT_MS / 2) {
+    return;
+  }
+
+  lastPresenceSyncAt = now;
+  const lastSeenAt = new Date(now).toISOString();
+  applyLocalProfilePresence(user.id, lastSeenAt);
+
+  if (profileLastSeenFieldSupported === false) {
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("profiles")
+    .update({ last_seen_at: lastSeenAt })
+    .eq("id", user.id)
+    .select("id, last_seen_at")
+    .maybeSingle();
+
+  if (error) {
+    if (String(error.message || "").toLowerCase().includes("last_seen_at")) {
+      profileLastSeenFieldSupported = false;
+      return;
+    }
+
+    console.error(error);
+    return;
+  }
+
+  profileLastSeenFieldSupported = true;
+  applyLocalProfilePresence(user.id, data?.last_seen_at || lastSeenAt);
+}
+
+function stopProfilePresenceHeartbeat() {
+  if (!profilePresenceHeartbeatId) return;
+
+  window.clearInterval(profilePresenceHeartbeatId);
+  profilePresenceHeartbeatId = 0;
+}
+
+function startProfilePresenceHeartbeat() {
+  stopProfilePresenceHeartbeat();
+
+  if (!currentUser) return;
+
+  void touchCurrentUserPresence({ force: true });
+  profilePresenceHeartbeatId = window.setInterval(() => {
+    if (document.visibilityState === "hidden" || !currentUser) return;
+    void touchCurrentUserPresence();
+  }, PROFILE_PRESENCE_HEARTBEAT_MS);
 }
 
 async function openProfilePopupForUser(
@@ -3066,8 +3286,11 @@ function bindProfilePopupTrigger(element, openProfilePopup) {
 
 async function fetchProfilesDirectory() {
   const selectCandidates = [
+    "id, nickname, username, avatar_url, bio, last_seen_at, created_at",
     "id, nickname, username, avatar_url, bio, created_at",
+    "id, nickname, username, avatar_url, last_seen_at, created_at",
     "id, nickname, username, avatar_url, created_at",
+    "id, nickname, username, avatar_url, last_seen_at",
     "id, nickname, username, avatar_url",
     "id, nickname, username",
   ];
@@ -3141,6 +3364,34 @@ function isTotoUser() {
 
   if (identity.includes("dodo")) return false;
   return identity.includes("toto");
+}
+
+function isDodoUser() {
+  const profileName =
+    `${currentProfile?.nickname || ""} ${currentProfile?.username || ""}`.toLowerCase();
+  const email = String(currentUser?.email || "").toLowerCase();
+  const identity = `${profileName} ${email}`;
+
+  if (identity.includes("toto")) return false;
+  return identity.includes("dodo");
+}
+
+function canEditPhotoPinWidget(widgetOrId) {
+  const normalizedId = String(
+    typeof widgetOrId === "string" ? widgetOrId : widgetOrId?.id || "",
+  )
+    .toLowerCase()
+    .trim();
+
+  if (normalizedId === "photo-pin-right") {
+    return isDodoUser();
+  }
+
+  if (normalizedId === "photo-pin") {
+    return isTotoUser();
+  }
+
+  return false;
 }
 
 function createEntryPreviewId() {
@@ -3422,7 +3673,7 @@ function getWidgetContent(widget) {
       <div class="song-widget-card${coverUrl ? " has-cover" : ""}">
         ${
           coverUrl
-            ? `<img class="song-widget-cover" src="${coverUrl}" alt="Spotify cover art" loading="lazy" />`
+        ? `<img class="song-widget-cover" src="${coverUrl}" alt="Spotify cover art" loading="lazy" decoding="async" />`
             : '<div class="song-widget-art-placeholder">paste a Spotify track link to fill this card ♡</div>'
         }
         <div class="song-widget-meta">
@@ -3693,19 +3944,30 @@ function getWidgetContent(widget) {
     );
     const rotate = Number(photoData.rotate) || 0;
     const imageStyle = `transform:rotate(${rotate}deg);`;
+    const canEditPhoto = canEditPhotoPinWidget(widget);
 
     if (!photoData.image) {
       return `
-      <button class="soft-btn widget-photo-empty widget-miss-you-btn" type="button" data-photo-widget-id="${widget.id}">
-        + pin photo
+      <button
+        class="soft-btn widget-photo-empty widget-miss-you-btn"
+        type="button"
+        data-photo-widget-id="${widget.id}"
+      >
+        ${canEditPhoto ? "+ pin photo" : "open pin ♡"}
       </button>
     `;
     }
 
     return `
-    <div class="widget-photo-card">
+    <div
+      class="widget-photo-card widget-photo-open"
+      role="button"
+      tabindex="0"
+      data-photo-widget-id="${widget.id}"
+      aria-label="${canEditPhoto ? "open pin editor" : "open pin"}"
+    >
       <div class="widget-photo-frame">
-        <img class="widget-photo-image" src="${photoData.image}" alt="pinned photo" style="${imageStyle}" />
+        <img class="widget-photo-image" src="${photoData.image}" alt="pinned photo" style="${imageStyle}" loading="lazy" decoding="async" />
         ${overlayText ? `<div class="widget-photo-text" style="left:${textX}%;top:${textY}%;color:${textColor};--photo-text-size:${textSize};">${overlayText}</div>` : ""}
       </div>
     </div>
@@ -3825,6 +4087,7 @@ async function loadWidgets(options = {}) {
       const isSweetReminderWidget = normalizedId === "sweet-reminder";
       const isSongWidget = normalizedId === "song";
       const isLikeable = isLikeableWidget(mergedWidget);
+      const isPhotoPin = isPhotoPinWidget(mergedWidget);
 
       if (isWishlistWidget && Array.isArray(mergedWidget.data?.items)) {
         const normalizedItems = getWishlistItemsInDisplayOrder(
@@ -3876,6 +4139,10 @@ async function loadWidgets(options = {}) {
         widgetsNeedingNormalization.push(mergedWidget);
       }
 
+      if (isPhotoPin && normalizePhotoWidgetComments(mergedWidget)) {
+        widgetsNeedingNormalization.push(mergedWidget);
+      }
+
       const titleChanged = mergedWidget.title !== defaultWidget.title;
 
       if (titleChanged) {
@@ -3911,8 +4178,15 @@ async function loadWidgets(options = {}) {
           array.findIndex((item) => item.id === widget.id) === index,
       );
 
-    for (const widget of uniqueWidgetsNeedingNormalization) {
-      await saveWidgetToSupabase(widget, { recordHistory: false });
+    if (uniqueWidgetsNeedingNormalization.length) {
+      void Promise.allSettled(
+        uniqueWidgetsNeedingNormalization.map((widget) =>
+          saveWidgetToSupabase(widget, {
+            recordHistory: false,
+            suppressErrorMessage: true,
+          }),
+        ),
+      );
     }
   }
 
@@ -4022,6 +4296,7 @@ function renderWidgets() {
         normalizedTitle.includes("pinned photo") ||
         normalizedTitle.includes("pinned") ||
         normalizedTitle.includes("pin it");
+      const canEditPhotoWidget = !isPhotoWidget || canEditPhotoPinWidget(widget);
       const isEntryPreviewWidget =
         normalizedId === "entry-preview" ||
         renderItem.sourceId === "entry-preview";
@@ -4035,7 +4310,7 @@ function renderWidgets() {
         isNoteWidget ||
         isDatesWidget ||
         isWishlistWidget ||
-        isPhotoWidget;
+        (isPhotoWidget && canEditPhotoWidget);
       const showHeaderEditButton = isEditable && !isEntryPreviewWidget;
 
       const editTargetId = isDatesWidget
@@ -4214,7 +4489,9 @@ function renderWidgets() {
       }
 
       if (isPhotoWidget) {
-        el.querySelectorAll(".widget-photo-empty").forEach((btn) => {
+        el
+          .querySelectorAll(".widget-photo-empty, .widget-photo-open")
+          .forEach((btn) => {
           ["mousedown", "pointerdown"].forEach((eventName) => {
             btn.addEventListener(eventName, (event) => {
               event.preventDefault();
@@ -4231,6 +4508,19 @@ function renderWidgets() {
               widget.id;
             openWidgetEditor(targetId);
           });
+
+          if (!btn.matches("button")) {
+            btn.addEventListener("keydown", (event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              event.stopPropagation();
+              const targetId =
+                btn.dataset.photoWidgetId ||
+                btn.getAttribute("data-photo-widget-id") ||
+                widget.id;
+              openWidgetEditor(targetId);
+            });
+          }
         });
       }
 
@@ -4413,6 +4703,7 @@ function openWidgetEditor(widgetId) {
     `;
   } else if (normalizedId === "song") {
     normalizeSongWidget(widget);
+    const songCommentPrefix = `photo-widget-comments-${widget.id}`;
     widgetPopupTitle.textContent = widget.title;
     saveWidgetBtn.style.display = "none";
     setHeaderWidgetSaveVisibility(true);
@@ -4452,6 +4743,10 @@ function openWidgetEditor(widgetId) {
         <input id="widgetFieldSongUri" type="hidden" value="${escapeHtml(widget.data?.spotifyUri || "")}" />
         <input id="widgetFieldSongName" type="hidden" value="${escapeHtml(widget.data?.songName || "")}" />
       </div>
+      ${getPhotoWidgetCommentSectionMarkup(widget, {
+        prefix: songCommentPrefix,
+        title: "comments ♡",
+      })}
     `;
 
     const spotifyUrlInput = document.getElementById("widgetFieldSpotifyUrl");
@@ -4506,6 +4801,11 @@ function openWidgetEditor(widgetId) {
         fetchSpotifySongBtn.disabled = false;
         fetchSpotifySongBtn.textContent = "fetch";
       }
+    });
+
+    bindPhotoWidgetCommentSection(widget, {
+      prefix: songCommentPrefix,
+      title: "comments ♡",
     });
   } else if (normalizedId === "note") {
     normalizeWidgetLikesData(widget);
@@ -4864,11 +5164,14 @@ function openWidgetEditor(widgetId) {
       widget.data = {};
     }
     normalizeWidgetLikesData(widget);
+    normalizePhotoWidgetComments(widget);
+    const photoCommentPrefix = `photo-widget-comments-${widget.id}`;
+    const canEditPhoto = canEditPhotoPinWidget(widget);
 
     widgetPopupTitle.textContent =
       normalizedId === "photo-pin-right" ? "♡ pin it ⊹˚₊" : "₊˚⊹ pin it ♡";
     saveWidgetBtn.style.display = "none";
-    setHeaderWidgetSaveVisibility(true);
+    setHeaderWidgetSaveVisibility(canEditPhoto);
     setWidgetPopupLikeButton(widget);
 
     const photoData = {
@@ -4884,6 +5187,26 @@ function openWidgetEditor(widgetId) {
         : 86,
       rotate: Number(widget.data.rotate) || 0,
     };
+
+    if (!canEditPhoto) {
+      widgetEditorFields.innerHTML = `
+        ${getPhotoWidgetCommentPreviewMarkup(widget.data, {
+          showLabel: true,
+        })}
+        ${getPhotoWidgetCommentSectionMarkup(widget, {
+          prefix: photoCommentPrefix,
+          title: "little notes ♡",
+        })}
+      `;
+
+      bindPhotoWidgetCommentSection(widget, {
+        prefix: photoCommentPrefix,
+        title: "little notes ♡",
+      });
+      widgetPopup.classList.add("open");
+      return;
+    }
+
     widgetEditorFields.innerHTML = `
       <div class="photo-editor-fields">
         <label class="popup-label">photo</label>
@@ -4947,6 +5270,10 @@ function openWidgetEditor(widgetId) {
         </div>
 
       </div>
+      ${getPhotoWidgetCommentSectionMarkup(widget, {
+        prefix: photoCommentPrefix,
+        title: "little notes ♡",
+      })}
     `;
 
     const photoInput = document.getElementById("photoWidgetInput");
@@ -5113,6 +5440,11 @@ function openWidgetEditor(widgetId) {
       preview.innerHTML = "<span>no photo pinned yet</span>";
       updatePhotoPreview();
     });
+
+    bindPhotoWidgetCommentSection(widget, {
+      prefix: photoCommentPrefix,
+      title: "little notes ♡",
+    });
   } else {
     widgetPopupTitle.textContent = widget.title;
     widgetEditorFields.innerHTML = `<div class="small-note">this widget is not editable yet ♡</div>`;
@@ -5124,6 +5456,12 @@ function openWidgetEditor(widgetId) {
 }
 
 async function saveWidgetChanges() {
+  if (widgetSaveInFlight) return;
+  widgetSaveInFlight = true;
+  if (saveWidgetBtn) saveWidgetBtn.disabled = true;
+  if (headerSaveWidgetBtn) headerSaveWidgetBtn.disabled = true;
+
+  try {
   const widget = widgets.find((item) => {
     const itemId = String(item.id || "")
       .toLowerCase()
@@ -5289,6 +5627,11 @@ async function saveWidgetChanges() {
       .toLowerCase()
       .startsWith("photo-pin")
   ) {
+    if (!canEditPhotoPinWidget(widget)) {
+      showMessage("you can only view, like, and comment on this pin ♡");
+      return;
+    }
+
     if (!widget.data) widget.data = {};
     widget.data.image =
       document.getElementById("photoWidgetImageData")?.value || "";
@@ -5349,6 +5692,11 @@ async function saveWidgetChanges() {
   widgetPopup.classList.remove("open");
   setWidgetPopupLikeButton(null);
   showMessage("widget updated ♡");
+  } finally {
+    widgetSaveInFlight = false;
+    if (saveWidgetBtn) saveWidgetBtn.disabled = false;
+    if (headerSaveWidgetBtn) headerSaveWidgetBtn.disabled = false;
+  }
 }
 
 async function saveWidgetToSupabase(widget, options = {}) {
@@ -5405,6 +5753,7 @@ async function saveWidgetToSupabase(widget, options = {}) {
   }
 
   widget.updated_at = payload.updated_at;
+  refreshNotificationsFromCurrentData(false);
   return true;
 }
 
@@ -5491,7 +5840,7 @@ function renderTimeline() {
     const isOwner = currentProfile && post.userId === currentProfile.id;
     const profileAriaLabel = `open ${post.nickname || "profile"} profile`;
     const avatarHtml = post.avatarUrl
-      ? `<img class="post-avatar profile-trigger" src="${post.avatarUrl}" alt="${post.nickname || "profile"}" role="button" tabindex="0" aria-label="${escapeHtml(profileAriaLabel)}" title="open profile" />`
+      ? `<img class="post-avatar profile-trigger" src="${post.avatarUrl}" alt="${post.nickname || "profile"}" role="button" tabindex="0" aria-label="${escapeHtml(profileAriaLabel)}" title="open profile" loading="lazy" decoding="async" />`
       : `<div class="post-avatar profile-trigger" role="button" tabindex="0" aria-label="${escapeHtml(profileAriaLabel)}" title="open profile"></div>`;
 
     const postEl = document.createElement("article");
@@ -5701,18 +6050,11 @@ function switchStickerTab(nextTab) {
     gifPanel.classList.toggle("active", isGiphyTab);
   }
 
-  if (gifSearchLabel) {
-    gifSearchLabel.textContent =
-      activeGiphySearchType === "giphy-sticker"
-        ? "search GIPHY stickers ♡"
-        : "search public gifs ♡";
-  }
-
   if (gifSearchInput) {
     gifSearchInput.placeholder =
       activeGiphySearchType === "giphy-sticker"
-        ? "Search GIPHY stickers"
-        : "Search GIPHY";
+        ? "Search GIPHY Stickers"
+        : "Search GIPHY GIFs";
   }
 
   if (nextTab === "type") {
@@ -6816,6 +7158,97 @@ function getWidgetHistoryEntries(widgetId) {
   }
 }
 
+function createWidgetHistoryEntryId() {
+  return crypto.randomUUID
+    ? crypto.randomUUID()
+    : `widget-history-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function isSameWidgetHistoryEntry(entry, targetEntry) {
+  const entryId = String(entry?.id || "").trim();
+  const targetId = String(targetEntry?.id || "").trim();
+
+  if (entryId && targetId) {
+    return entryId === targetId;
+  }
+
+  return (
+    String(entry?.savedAt || "") === String(targetEntry?.savedAt || "") &&
+    String(entry?.summary || "") === String(targetEntry?.summary || "") &&
+    String(entry?.title || "") === String(targetEntry?.title || "") &&
+    String(entry?.actorId || "") === String(targetEntry?.actorId || "")
+  );
+}
+
+function serializeWidgetHistoryEntryTarget(entry) {
+  try {
+    return encodeURIComponent(
+      JSON.stringify({
+        id: String(entry?.id || "").trim(),
+        savedAt: String(entry?.savedAt || ""),
+        summary: String(entry?.summary || ""),
+        title: String(entry?.title || ""),
+        actorId: String(entry?.actorId || ""),
+      }),
+    );
+  } catch (error) {
+    console.error(error);
+    return "";
+  }
+}
+
+function parseWidgetHistoryEntryTarget(serializedEntry) {
+  try {
+    return JSON.parse(decodeURIComponent(String(serializedEntry || "")));
+  } catch (error) {
+    console.error(error);
+    return null;
+  }
+}
+
+function removeWidgetHistoryEntry(widgetId, targetEntry) {
+  if (!widgetId || !targetEntry) return false;
+
+  let removed = false;
+  const widget = widgets.find((item) => item.id === widgetId);
+
+  if (widget?.data && typeof widget.data === "object") {
+    const currentHistory = Array.isArray(widget.data.history)
+      ? widget.data.history
+      : [];
+    const nextHistory = currentHistory.filter((entry) => {
+      const shouldKeep = !isSameWidgetHistoryEntry(entry, targetEntry);
+      removed = removed || !shouldKeep;
+      return shouldKeep;
+    });
+
+    widget.data = {
+      ...widget.data,
+      history: nextHistory,
+    };
+  }
+
+  try {
+    const storageKey = `widgetHistory:${widgetId}`;
+    const raw = localStorage.getItem(storageKey);
+    const parsed = raw ? JSON.parse(raw) : [];
+
+    if (Array.isArray(parsed)) {
+      const nextStoredHistory = parsed.filter((entry) => {
+        const shouldKeep = !isSameWidgetHistoryEntry(entry, targetEntry);
+        removed = removed || !shouldKeep;
+        return shouldKeep;
+      });
+
+      localStorage.setItem(storageKey, JSON.stringify(nextStoredHistory));
+    }
+  } catch (error) {
+    console.error(error);
+  }
+
+  return removed;
+}
+
 function updateCurrentUserHistoryActorNames(nextName) {
   const actorId = currentProfile?.id || currentUser?.id || "";
   const trimmedName = String(nextName || "").trim();
@@ -6968,6 +7401,551 @@ function getPhotoHistoryEntries(widget) {
     sourceWidgetId: entry?.sourceWidgetId || widget.id,
     sourceWidgetTitle: entry?.sourceWidgetTitle || widget.title || "",
   }));
+}
+
+function createPhotoWidgetCommentId() {
+  return crypto.randomUUID
+    ? crypto.randomUUID()
+    : `photo-widget-comment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getPhotoWidgetComments(widget) {
+  if (!widget?.data || typeof widget.data !== "object") {
+    return [];
+  }
+
+  const rawComments = Array.isArray(widget.data.comments)
+    ? widget.data.comments
+    : Array.isArray(widget.data.photoComments)
+      ? widget.data.photoComments
+      : [];
+
+  return rawComments
+    .filter((comment) => comment && typeof comment === "object")
+    .map((comment, index) => ({
+      id:
+        String(comment.id || "").trim() ||
+        `photo-widget-comment-${widget.id}-${index}`,
+      userId: String(comment.userId || comment.user_id || "").trim(),
+      actorName: String(
+        comment.actorName || comment.nickname || comment.author || "",
+      ).trim(),
+      text: String(comment.text || comment.content || "").trim(),
+      createdAt: String(comment.createdAt || comment.created_at || "").trim(),
+      preview: getWidgetCommentPreviewData(comment),
+    }))
+    .filter((comment) => comment.text)
+    .sort(
+      (left, right) =>
+        new Date(left.createdAt || 0).getTime() -
+        new Date(right.createdAt || 0).getTime(),
+    );
+}
+
+function normalizePhotoWidgetComments(widget) {
+  if (!widget?.data || typeof widget.data !== "object") {
+    return false;
+  }
+
+  const normalizedComments = getPhotoWidgetComments(widget);
+  const existingComments = Array.isArray(widget.data.comments)
+    ? widget.data.comments
+    : [];
+  const hadLegacyCommentsKey = Object.prototype.hasOwnProperty.call(
+    widget.data,
+    "photoComments",
+  );
+  const alreadyNormalized =
+    Array.isArray(widget.data.comments) &&
+    existingComments.length === normalizedComments.length &&
+    existingComments.every((comment, index) => {
+      const normalizedComment = normalizedComments[index];
+      return (
+        String(comment?.id || "").trim() === normalizedComment.id &&
+        String(comment?.userId || "").trim() === normalizedComment.userId &&
+        String(comment?.actorName || "").trim() === normalizedComment.actorName &&
+        String(comment?.text || "").trim() === normalizedComment.text &&
+        String(comment?.createdAt || "").trim() === normalizedComment.createdAt &&
+        JSON.stringify(getWidgetCommentPreviewData(comment)) ===
+          JSON.stringify(normalizedComment.preview)
+      );
+    });
+
+  if (alreadyNormalized && !hadLegacyCommentsKey) {
+    return false;
+  }
+
+  widget.data = {
+    ...widget.data,
+    comments: normalizedComments,
+  };
+  delete widget.data.photoComments;
+  return true;
+}
+
+function getPhotoWidgetCommentSectionIds(prefix) {
+  return {
+    labelId: `${prefix}Label`,
+    listId: `${prefix}List`,
+    inputId: `${prefix}Input`,
+    buttonId: `${prefix}Button`,
+  };
+}
+
+function getPhotoWidgetCommentPreviewData(source) {
+  const previewSource =
+    source?.preview && typeof source.preview === "object" ? source.preview : source;
+  return {
+    kind: "photo",
+    image: String(previewSource?.image || "").trim(),
+    text: String(previewSource?.text || ""),
+    textColor: normalizeHexColor(previewSource?.textColor, "#ffffff"),
+    textSize: Math.max(12, Math.min(46, Number(previewSource?.textSize) || 22)),
+    textX: Math.max(0, Math.min(100, Number(previewSource?.textX) || 50)),
+    textY: Math.max(0, Math.min(100, Number(previewSource?.textY) || 86)),
+    rotate: Number(previewSource?.rotate) || 0,
+  };
+}
+
+function getSongWidgetCommentPreviewData(source) {
+  const previewSource =
+    source?.preview && typeof source.preview === "object" ? source.preview : source;
+  return {
+    kind: "song",
+    coverUrl: String(previewSource?.coverUrl || "").trim(),
+    songName: String(previewSource?.songName || "").trim(),
+    durationLabel: String(previewSource?.durationLabel || "").trim(),
+    caption: String(previewSource?.caption || "").trim(),
+  };
+}
+
+function getWidgetCommentPreviewData(source) {
+  const previewSource =
+    source?.preview && typeof source.preview === "object" ? source.preview : source;
+  const previewKind = String(previewSource?.kind || "").trim().toLowerCase();
+
+  if (previewKind === "song") {
+    return getSongWidgetCommentPreviewData(source);
+  }
+
+  if (
+    previewKind === "photo" ||
+    previewSource?.image ||
+    previewSource?.textColor ||
+    previewSource?.textSize ||
+    previewSource?.textX ||
+    previewSource?.textY ||
+    previewSource?.rotate
+  ) {
+    return getPhotoWidgetCommentPreviewData(source);
+  }
+
+  if (previewSource?.coverUrl || previewSource?.songName || previewSource?.caption) {
+    return getSongWidgetCommentPreviewData(source);
+  }
+
+  return getPhotoWidgetCommentPreviewData(source);
+}
+
+function getPhotoWidgetCommentPreviewMarkup(source, options = {}) {
+  const { showLabel = false, compact = false } = options;
+  const preview = getPhotoWidgetCommentPreviewData(source);
+  const image = preview.image;
+  const overlayText = escapeHtml(preview.text || "");
+  const textColor = escapeHtml(
+    normalizeHexColor(preview.textColor, "#ffffff"),
+  );
+  const textSize = Math.max(12, Math.min(46, Number(preview.textSize) || 22));
+  const textX = Math.max(0, Math.min(100, Number(preview.textX) || 50));
+  const textY = Math.max(0, Math.min(100, Number(preview.textY) || 86));
+  const rotate = Number(preview.rotate) || 0;
+
+  return `
+    <div class="photo-widget-comment-preview-card${compact ? " is-inline" : ""}" aria-label="pin it preview">
+      <div class="photo-widget-comment-preview-frame">
+        ${
+          image
+            ? `
+          <img
+            class="photo-widget-comment-preview-image"
+            src="${escapeHtml(image)}"
+            alt="pin it preview"
+            style="transform:rotate(${rotate}deg);"
+            loading="lazy"
+            decoding="async"
+          />
+          ${
+            overlayText
+              ? `<div class="photo-widget-comment-preview-text" style="left:${textX}%;top:${textY}%;color:${textColor};--photo-text-size:${textSize};">${overlayText}</div>`
+              : ""
+          }
+        `
+            : `<div class="photo-widget-comment-preview-empty">no photo pinned yet ♡</div>`
+        }
+      </div>
+      ${
+        showLabel
+          ? '<div class="photo-widget-comment-preview-label">the pin you\'re commenting on ♡</div>'
+          : ""
+      }
+    </div>
+  `;
+}
+
+function getSongWidgetCommentPreviewMarkup(source, options = {}) {
+  const { showLabel = false, compact = false } = options;
+  const preview = getSongWidgetCommentPreviewData(source);
+  const coverUrl = String(preview.coverUrl || "").trim();
+  const songName = escapeHtml(preview.songName || "saved song ♡");
+  const durationLabel = escapeHtml(preview.durationLabel || "");
+  const caption = escapeHtml(preview.caption || preview.durationLabel || "");
+  const shouldShowTime = Boolean(durationLabel) && durationLabel !== caption;
+
+  return `
+    <div class="song-widget-comment-preview-card${compact ? " is-inline" : ""}" aria-label="song preview">
+      <div class="song-widget-comment-preview-art">
+        ${
+          coverUrl
+            ? `<img class="song-widget-comment-preview-image" src="${escapeHtml(coverUrl)}" alt="commented song cover" loading="lazy" decoding="async" />`
+            : '<div class="song-widget-comment-preview-empty">no cover ♡</div>'
+        }
+      </div>
+      <div class="song-widget-comment-preview-meta">
+        <div class="song-widget-comment-preview-title">${songName}</div>
+        ${
+          shouldShowTime
+            ? `<div class="song-widget-comment-preview-time">${durationLabel}</div>`
+            : ""
+        }
+        ${
+          caption
+            ? `<div class="song-widget-comment-preview-caption">${caption}</div>`
+            : ""
+        }
+      </div>
+      ${
+        showLabel
+          ? '<div class="photo-widget-comment-preview-label">the song you\'re commenting on ♡</div>'
+          : ""
+      }
+    </div>
+  `;
+}
+
+function getWidgetCommentPreviewMarkup(source, options = {}) {
+  const preview = getWidgetCommentPreviewData(source);
+  if (preview.kind === "song") {
+    return getSongWidgetCommentPreviewMarkup(preview, options);
+  }
+
+  return getPhotoWidgetCommentPreviewMarkup(preview, options);
+}
+
+function getWidgetCommentPreviewSnapshot(widget) {
+  const normalizedId = String(widget?.id || "")
+    .toLowerCase()
+    .trim();
+
+  if (normalizedId === "song") {
+    const songData =
+      widget?.data && typeof widget.data === "object" ? widget.data : {};
+    return {
+      kind: "song",
+      coverUrl: String(songData.coverUrl || "").trim(),
+      songName: String(songData.songName || "").trim(),
+      durationLabel: "",
+      caption: String(songData.durationLabel || "").trim(),
+    };
+  }
+
+  return getPhotoWidgetCommentPreviewData(widget?.data || {});
+}
+
+function getPhotoWidgetCommentSectionMarkup(widget, options = {}) {
+  const {
+    prefix = `photo-widget-comments-${widget?.id || "widget"}`,
+    title = "little notes ♡",
+    includeInput = true,
+  } = options;
+  const comments = getPhotoWidgetComments(widget);
+  const ids = getPhotoWidgetCommentSectionIds(prefix);
+  const countLabel = comments.length ? ` (${comments.length})` : "";
+
+  return `
+    <section class="photo-widget-comments-section" data-photo-widget-comments-prefix="${escapeHtml(prefix)}">
+      <label
+        class="popup-label photo-widget-comments-label"
+        id="${escapeHtml(ids.labelId)}"
+        ${includeInput ? `for="${escapeHtml(ids.inputId)}"` : ""}
+      >
+        ${escapeHtml(title)}${countLabel}
+      </label>
+      <div
+        class="photo-widget-comments-list"
+        id="${escapeHtml(ids.listId)}"
+      ></div>
+      ${
+        includeInput
+          ? `
+        <textarea
+          class="popup-input photo-widget-comment-input"
+          id="${escapeHtml(ids.inputId)}"
+          rows="3"
+          maxlength="240"
+        ></textarea>
+        <div class="popup-actions photo-widget-comments-actions">
+          <button
+            class="soft-btn"
+            id="${escapeHtml(ids.buttonId)}"
+            type="button"
+          >
+            post comment
+          </button>
+        </div>
+      `
+          : ""
+      }
+    </section>
+  `;
+}
+
+function renderPhotoWidgetCommentsSection(widget, options = {}) {
+  const {
+    prefix = `photo-widget-comments-${widget?.id || "widget"}`,
+    title = "little notes ♡",
+  } = options;
+  const ids = getPhotoWidgetCommentSectionIds(prefix);
+  const listEl = document.getElementById(ids.listId);
+  const labelEl = document.getElementById(ids.labelId);
+  if (!listEl) return;
+
+  const comments = getPhotoWidgetComments(widget);
+  if (labelEl) {
+    labelEl.textContent = `${title}${comments.length ? ` (${comments.length})` : ""}`;
+  }
+
+  if (!comments.length) {
+    listEl.innerHTML = `<div class="comment-empty">no comments yet ♡</div>`;
+    return;
+  }
+
+  listEl.innerHTML = comments
+    .map((comment) => {
+      const actorName = escapeHtml(
+        comment.actorName ||
+          getProfileDisplayName(getKnownProfileById(comment.userId), "memory"),
+      );
+      const preview = getWidgetCommentPreviewData(comment);
+      const hasPreview =
+        preview.kind === "song"
+          ? Boolean(
+              preview.coverUrl ||
+                preview.songName ||
+                preview.durationLabel ||
+                preview.caption,
+            )
+          : Boolean(preview.image || preview.text);
+      const canDelete =
+        comment.userId &&
+        comment.userId === (currentProfile?.id || currentUser?.id || "");
+
+      return `
+        <div
+          class="comment-item photo-widget-comment-item"
+          data-photo-widget-comment-row-id="${escapeHtml(comment.id)}"
+        >
+          <div class="photo-widget-comment-content">
+            <div
+              class="comment-name profile-trigger"
+              role="button"
+              tabindex="0"
+              data-photo-widget-comment-profile-id="${escapeHtml(comment.userId)}"
+            >
+              ${actorName}
+            </div>
+            <div
+              class="comment-text"
+              data-photo-widget-comment-text-id="${escapeHtml(comment.id)}"
+            ></div>
+            <div
+              class="comment-link-preview-list link-preview-list"
+              data-photo-widget-comment-preview-id="${escapeHtml(comment.id)}"
+              hidden
+            ></div>
+            <div class="photo-widget-comment-footer">
+              <div class="comment-meta">${formatEntryDate(comment.createdAt)}</div>
+            </div>
+          </div>
+          ${hasPreview ? getWidgetCommentPreviewMarkup(comment, { compact: true }) : ""}
+          ${
+            canDelete
+              ? `
+                <div class="comment-actions photo-widget-comment-actions">
+                  <button
+                    class="delete-comment-btn"
+                    type="button"
+                    data-photo-widget-delete-comment-id="${escapeHtml(comment.id)}"
+                    aria-label="delete comment"
+                    title="delete comment"
+                  >
+                    ×
+                  </button>
+                </div>
+              `
+                  : ""
+              }
+        </div>
+      `;
+    })
+    .join("");
+
+  comments.forEach((comment) => {
+    const textEl = listEl.querySelector(
+      `[data-photo-widget-comment-text-id="${comment.id}"]`,
+    );
+    if (textEl) {
+      renderTextWithLinkPreviews(
+        textEl,
+        listEl.querySelector(
+          `[data-photo-widget-comment-preview-id="${comment.id}"]`,
+        ),
+        comment.text,
+      );
+    }
+  });
+
+  listEl
+    .querySelectorAll("[data-photo-widget-delete-comment-id]")
+    .forEach((button) => {
+      button.addEventListener("click", async () => {
+        await deletePhotoWidgetComment(
+          widget.id,
+          button.dataset.photoWidgetDeleteCommentId,
+          options,
+        );
+      });
+    });
+
+  listEl
+    .querySelectorAll("[data-photo-widget-comment-profile-id]")
+    .forEach((nameEl) => {
+      const profileId =
+        String(nameEl.getAttribute("data-photo-widget-comment-profile-id") || "")
+          .trim();
+      const fallbackProfile = {
+        id: profileId,
+        nickname: nameEl.textContent?.trim() || "memory",
+      };
+      bindProfilePopupTrigger(nameEl, () =>
+        openProfilePopupForUser(profileId, fallbackProfile),
+      );
+    });
+}
+
+function bindPhotoWidgetCommentSection(widget, options = {}) {
+  const { prefix = `photo-widget-comments-${widget?.id || "widget"}` } =
+    options;
+  const ids = getPhotoWidgetCommentSectionIds(prefix);
+
+  renderPhotoWidgetCommentsSection(widget, options);
+
+  const saveBtn = document.getElementById(ids.buttonId);
+  const input = document.getElementById(ids.inputId);
+
+  saveBtn?.addEventListener("click", async () => {
+    await savePhotoWidgetComment(widget.id, options);
+  });
+
+  input?.addEventListener("keydown", async (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      await savePhotoWidgetComment(widget.id, options);
+    }
+  });
+}
+
+async function savePhotoWidgetComment(widgetId, options = {}) {
+  const widget = widgets.find((item) => item.id === widgetId);
+  if (!widget) return;
+
+  const { prefix = `photo-widget-comments-${widget.id}` } = options;
+  const ids = getPhotoWidgetCommentSectionIds(prefix);
+  const input = document.getElementById(ids.inputId);
+  const content = String(input?.value || "").trim();
+
+  if (!content) {
+    showMessage("write something first ♡");
+    return;
+  }
+
+  const user = await getCurrentUser();
+  if (!user) {
+    showMessage("please log in first ♡");
+    return;
+  }
+
+  normalizePhotoWidgetComments(widget);
+  widget.data = {
+    ...(widget.data && typeof widget.data === "object" ? widget.data : {}),
+    comments: [
+      ...getPhotoWidgetComments(widget),
+      {
+        id: createPhotoWidgetCommentId(),
+        userId: user.id,
+        actorName: getProfileDisplayName(currentProfile, "memory"),
+        text: content,
+        createdAt: new Date().toISOString(),
+        preview: getWidgetCommentPreviewSnapshot(widget),
+      },
+    ].slice(-60),
+  };
+
+  const saved = await saveWidgetToSupabase(widget, {
+    recordHistory: false,
+    notifyUpdate: false,
+    suppressErrorMessage: false,
+  });
+
+  if (!saved) return;
+
+  if (input) {
+    input.value = "";
+  }
+  renderPhotoWidgetCommentsSection(widget, options);
+  showMessage("comment posted! ♡");
+}
+
+async function deletePhotoWidgetComment(widgetId, commentId, options = {}) {
+  const widget = widgets.find((item) => item.id === widgetId);
+  const normalizedCommentId = String(commentId || "").trim();
+  if (!widget || !normalizedCommentId) return;
+
+  const row = document.querySelector(
+    `[data-photo-widget-comment-row-id="${normalizedCommentId}"]`,
+  );
+  if (row) {
+    row.style.transition = "opacity 0.25s ease, transform 0.25s ease";
+    row.style.opacity = "0";
+    row.style.transform = "translateY(6px) scale(0.98)";
+  }
+
+  widget.data = {
+    ...(widget.data && typeof widget.data === "object" ? widget.data : {}),
+    comments: getPhotoWidgetComments(widget).filter(
+      (comment) => comment.id !== normalizedCommentId,
+    ),
+  };
+
+  const saved = await saveWidgetToSupabase(widget, {
+    recordHistory: false,
+    notifyUpdate: false,
+    suppressErrorMessage: false,
+  });
+
+  if (!saved) return;
+
+  renderPhotoWidgetCommentsSection(widget, options);
+  showMessage("comment deleted ♡");
 }
 
 function getPhotoHistorySnapshotSignature(entry) {
@@ -7131,6 +8109,8 @@ function renderPhotoHistoryPopup(widget) {
                         src="${escapeHtml(entry.image || "")}"
                         alt="pinned photo history"
                         style="transform:rotate(${rotate}deg);"
+                        loading="lazy"
+                        decoding="async"
                       />
                       ${
                         overlayText
@@ -7237,6 +8217,7 @@ function recordWidgetHistory(widget) {
     }
 
     const nextEntry = {
+      id: createWidgetHistoryEntryId(),
       savedAt: new Date().toISOString(),
       summary,
       title: widget.title || "",
@@ -7307,7 +8288,18 @@ function openWidgetHistory(widgetId) {
           .map(
             (entry, index) => `
           <div class="widget-history-item">
-            <div class="widget-history-time">${formatEntryDate(entry.savedAt)}</div>
+            <div class="widget-history-item-top">
+              <div class="widget-history-time">${formatEntryDate(entry.savedAt)}</div>
+              <button
+                class="widget-history-delete-btn"
+                type="button"
+                data-widget-history-delete-entry="${escapeHtml(serializeWidgetHistoryEntryTarget(entry))}"
+                aria-label="delete this history message"
+                title="delete this history message"
+              >
+                ×
+              </button>
+            </div>
             <div class="widget-history-summary${entry?.actorId === (currentProfile?.id || currentUser?.id || "") ? " widget-history-actor-editable" : ""}" ${entry?.actorId === (currentProfile?.id || currentUser?.id || "") ? `role="button" tabindex="0" aria-label="edit displayed name" title="edit name" data-widget-history-actor-index="${index}"` : ""}>${escapeHtml(getWidgetHistoryActorName(entry))}</div>
             <div class="widget-history-summary">${escapeHtml(entry.summary || "widget update")}</div>
           </div>
@@ -7387,6 +8379,35 @@ function openWidgetHistory(widgetId) {
       });
     });
 
+  widgetEditorFields
+    .querySelectorAll("[data-widget-history-delete-entry]")
+    .forEach((button) => {
+      button.addEventListener("click", async () => {
+        const targetEntry = parseWidgetHistoryEntryTarget(
+          button.dataset.widgetHistoryDeleteEntry,
+        );
+        if (!targetEntry) return;
+
+        const shouldDelete = window.confirm("Delete this history message?");
+        if (!shouldDelete) return;
+
+        const removed = removeWidgetHistoryEntry(widget.id, targetEntry);
+        if (!removed) return;
+
+        const saved = await saveWidgetToSupabase(widget, {
+          recordHistory: false,
+          notifyUpdate: false,
+          suppressErrorMessage: false,
+        });
+
+        if (!saved) return;
+
+        openWidgetHistory(widget.id);
+        renderWidgets();
+        showMessage("history message deleted ♡");
+      });
+    });
+
   widgetPopup.classList.add("open");
 }
 
@@ -7437,7 +8458,12 @@ function setCurrentUser(user) {
     appToolbar.dataset.authState = currentUser ? "logged-in" : "logged-out";
   }
   if (!currentUser) {
+    stopProfilePresenceHeartbeat();
+    stopLiveUpdates();
     closeNotificationsPanel();
+  } else {
+    startProfilePresenceHeartbeat();
+    startLiveUpdates();
   }
   updateFloatingEntryButtonVisibility();
 }
@@ -7517,17 +8543,13 @@ function waitForImageLoad(image) {
 }
 
 async function waitForInitialPageReady() {
-  await waitForAnimationFrames(2);
+  await waitForAnimationFrames(1);
 
-  const pageImages = Array.from(document.querySelectorAll(".page img"));
-  const readinessTasks = [
-    waitForWindowLoad(),
-    document.fonts?.ready || Promise.resolve(),
-    ...pageImages.map(waitForImageLoad),
-  ];
+  const splashImage = launchSplash?.querySelector("img");
+  const readinessTasks = [waitForImageLoad(splashImage)];
 
-  await withBootTimeout(Promise.allSettled(readinessTasks));
-  await waitForAnimationFrames(2);
+  await withBootTimeout(Promise.allSettled(readinessTasks), 4000);
+  await waitForAnimationFrames(1);
 }
 
 function renderSignedOutShell() {
@@ -7609,12 +8631,68 @@ function setNotificationsClearedAt(value) {
   }
 }
 
+function getNotificationTimestamp(value) {
+  const timestamp = new Date(value || "").getTime();
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function getLatestNotificationCreatedAt(items = []) {
+  const latestItem = [...items].sort(
+    (left, right) =>
+      getNotificationTimestamp(right?.created_at) -
+      getNotificationTimestamp(left?.created_at),
+  )[0];
+
+  return String(latestItem?.created_at || "");
+}
+
+function getNotificationDedupKey(item) {
+  const explicitId = String(item?.id || "").trim();
+  if (explicitId) return explicitId;
+
+  return JSON.stringify({
+    type: String(item?.type || ""),
+    created_at: String(item?.created_at || ""),
+    message: String(item?.message || ""),
+    postId: String(item?.postId || ""),
+    widgetId: String(item?.widgetId || ""),
+    openComments: Boolean(item?.openComments),
+  });
+}
+
+function normalizeNotifications(items = []) {
+  const seenKeys = new Set();
+
+  return items
+    .filter((item) => item && typeof item === "object")
+    .filter((item) => getNotificationTimestamp(item.created_at) > 0)
+    .filter((item) => {
+      const key = getNotificationDedupKey(item);
+      if (!key || seenKeys.has(key)) return false;
+      seenKeys.add(key);
+      return true;
+    })
+    .sort((left, right) => {
+      const timestampDifference =
+        getNotificationTimestamp(right?.created_at) -
+        getNotificationTimestamp(left?.created_at);
+
+      if (timestampDifference !== 0) {
+        return timestampDifference;
+      }
+
+      return getNotificationDedupKey(left).localeCompare(
+        getNotificationDedupKey(right),
+      );
+    });
+}
+
 function getVisibleNotifications() {
   const clearedAt = getNotificationsClearedAt();
-  const clearedTimestamp = clearedAt ? new Date(clearedAt).getTime() : 0;
+  const clearedTimestamp = getNotificationTimestamp(clearedAt);
 
   return notifications.filter((item) => {
-    const createdAt = new Date(item.created_at).getTime();
+    const createdAt = getNotificationTimestamp(item.created_at);
     return !clearedTimestamp || createdAt > clearedTimestamp;
   });
 }
@@ -7623,10 +8701,10 @@ function getUnreadNotificationCount(
   visibleNotifications = getVisibleNotifications(),
 ) {
   const seenAt = getNotificationsSeenAt();
-  const seenTimestamp = seenAt ? new Date(seenAt).getTime() : 0;
+  const seenTimestamp = getNotificationTimestamp(seenAt);
 
   return visibleNotifications.filter((item) => {
-    const createdAt = new Date(item.created_at).getTime();
+    const createdAt = getNotificationTimestamp(item.created_at);
     return createdAt > seenTimestamp;
   }).length;
 }
@@ -7645,7 +8723,7 @@ function ensureNotificationsSeenBaseline() {
 }
 
 function formatNotificationRelativeTime(dateString) {
-  const timestamp = new Date(dateString).getTime();
+  const timestamp = getNotificationTimestamp(dateString);
   if (!timestamp) return "";
 
   const diffMs = Date.now() - timestamp;
@@ -7679,10 +8757,13 @@ function getNotificationTypeLabel(notificationOrType) {
       : { type: notificationOrType };
   const { type } = notification;
 
+  if (type === "entry") return "entry";
+  if (type === "entry_update") return "entry";
   if (type === "reply") return "reply";
   if (type === "comment") return "comment";
   if (type === "post_like") return "like";
   if (type === "comment_like") return "comment like";
+  if (type === "widget_comment") return "comment";
   if (type === "widget_like") return "widget like";
   if (type === "miss_you") return `${notification.actorPronoun || "they"} misses you`;
   if (type === "poem") return "poem";
@@ -7705,7 +8786,8 @@ function markNotificationsRead() {
   }
 
   const latestCreatedAt =
-    visibleNotifications[0]?.created_at || new Date().toISOString();
+    getLatestNotificationCreatedAt(visibleNotifications) ||
+    new Date().toISOString();
   setNotificationsSeenAt(latestCreatedAt);
   renderNotifications();
 }
@@ -7718,7 +8800,8 @@ function clearNotifications() {
   }
 
   const latestCreatedAt =
-    visibleNotifications[0]?.created_at || new Date().toISOString();
+    getLatestNotificationCreatedAt(visibleNotifications) ||
+    new Date().toISOString();
   setNotificationsClearedAt(latestCreatedAt);
   setNotificationsSeenAt(latestCreatedAt);
   renderNotifications();
@@ -7735,10 +8818,21 @@ function focusPost(postId, options = {}) {
   const { openComments = false } = options;
   const target = document.querySelector(`[data-post-id="${postId}"]`);
 
-  if (target) {
+  if (isTabbedLayoutActive()) {
+    setMobileView("timeline", { persist: false });
+  }
+
+  const scrollToTarget = () => {
+    if (!target) return;
     target.scrollIntoView({ behavior: "smooth", block: "center" });
     target.classList.add("post-highlight");
     window.setTimeout(() => target.classList.remove("post-highlight"), 1400);
+  };
+
+  if (isTabbedLayoutActive()) {
+    requestAnimationFrame(scrollToTarget);
+  } else {
+    scrollToTarget();
   }
 
   if (openComments) {
@@ -7761,9 +8855,25 @@ function focusWidget(widgetId) {
 
   if (!target) return;
 
-  target.scrollIntoView({ behavior: "smooth", block: "center" });
-  target.classList.add("post-highlight");
-  window.setTimeout(() => target.classList.remove("post-highlight"), 1400);
+  if (isTabbedLayoutActive()) {
+    if (leftZone?.contains(target)) {
+      setMobileView("left", { persist: false });
+    } else if (rightZone?.contains(target)) {
+      setMobileView("right", { persist: false });
+    }
+  }
+
+  const scrollToTarget = () => {
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.classList.add("post-highlight");
+    window.setTimeout(() => target.classList.remove("post-highlight"), 1400);
+  };
+
+  if (isTabbedLayoutActive()) {
+    requestAnimationFrame(scrollToTarget);
+  } else {
+    scrollToTarget();
+  }
 }
 
 function renderNotifications() {
@@ -7773,7 +8883,7 @@ function renderNotifications() {
 
   const visibleNotifications = getVisibleNotifications();
   const seenAt = getNotificationsSeenAt();
-  const seenTimestamp = seenAt ? new Date(seenAt).getTime() : 0;
+  const seenTimestamp = getNotificationTimestamp(seenAt);
   const unreadCount = getUnreadNotificationCount(visibleNotifications);
 
   notificationsBadge.hidden = unreadCount === 0;
@@ -7787,7 +8897,7 @@ function renderNotifications() {
 
   notificationsList.innerHTML = visibleNotifications
     .map((item) => {
-      const createdAt = new Date(item.created_at).getTime();
+      const createdAt = getNotificationTimestamp(item.created_at);
       const isUnread = createdAt > seenTimestamp;
 
       return `
@@ -7802,7 +8912,7 @@ function renderNotifications() {
             <span class="notification-type">${getNotificationTypeLabel(item)}</span>
             <span class="notification-time">${formatNotificationRelativeTime(item.created_at)}</span>
           </div>
-          <div class="notification-message">${item.message}</div>
+          <div class="notification-message">${escapeHtml(item.message)}</div>
         </button>
       `;
     })
@@ -7932,6 +9042,40 @@ function buildNotifications({
   );
   const nextNotifications = [];
 
+  postsData.forEach((post) => {
+    if (!post.created_at || post.user_id === myUserId) return;
+
+    const actorProfile = profileById.get(post.user_id);
+    const actorName =
+      post.profiles?.nickname ||
+      post.profiles?.username ||
+      actorProfile?.nickname ||
+      actorProfile?.username ||
+      "someone";
+
+    nextNotifications.push({
+      id: `entry:${post.id}`,
+      type: "entry",
+      created_at: post.created_at,
+      postId: post.id,
+      openComments: false,
+      message: `${actorName} posted a new entry`,
+    });
+
+    const createdAt = getNotificationTimestamp(post.created_at);
+    const updatedAt = getNotificationTimestamp(post.updated_at);
+    if (updatedAt && createdAt && updatedAt - createdAt > 1000) {
+      nextNotifications.push({
+        id: `entry-update:${post.id}:${post.updated_at}`,
+        type: "entry_update",
+        created_at: post.updated_at,
+        postId: post.id,
+        openComments: false,
+        message: `${actorName} updated an entry`,
+      });
+    }
+  });
+
   commentsData.forEach((comment) => {
     if (!comment.created_at || comment.user_id === myUserId) return;
 
@@ -8052,6 +9196,34 @@ function buildNotifications({
       });
     }
 
+    if (Array.isArray(widgetData.comments)) {
+      widgetData.comments.forEach((comment) => {
+        const actorId = String(comment?.userId || comment?.user_id || "");
+        const createdAt = String(
+          comment?.createdAt || comment?.created_at || "",
+        );
+
+        if (!actorId || actorId === myUserId || !createdAt) return;
+
+        const actorProfile = profileById.get(actorId);
+        const actorName =
+          comment?.actorName ||
+          actorProfile?.nickname ||
+          actorProfile?.username ||
+          "someone";
+        const commentId = String(comment?.id || createdAt);
+
+        nextNotifications.push({
+          id: `widget-comment:${widget.id}:${commentId}:${actorId}`,
+          type: "widget_comment",
+          created_at: createdAt,
+          widgetId: widget.id,
+          openComments: false,
+          message: `${actorName} commented on ${widgetName}`,
+        });
+      });
+    }
+
     if (!isLikeableWidget(widget)) return;
 
     normalizeWidgetLikesData(widget);
@@ -8078,10 +9250,7 @@ function buildNotifications({
     });
   });
 
-  notifications = nextNotifications.sort(
-    (a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-  );
+  notifications = normalizeNotifications(nextNotifications);
   ensureNotificationsSeenBaseline();
 
   if (render) {
@@ -8095,6 +9264,100 @@ function refreshNotificationsFromCurrentData(render = true) {
     widgetsData: widgets,
     render,
   });
+}
+
+function scheduleLiveDataRefresh(options = {}) {
+  if (!currentUser) return;
+  if (document.visibilityState === "hidden" && !options.allowHidden) return;
+
+  liveRefreshIncludeWidgets =
+    liveRefreshIncludeWidgets || Boolean(options.includeWidgets);
+
+  if (liveRefreshTimer) {
+    window.clearTimeout(liveRefreshTimer);
+  }
+
+  liveRefreshTimer = window.setTimeout(
+    runScheduledLiveDataRefresh,
+    Number.isFinite(options.debounceMs)
+      ? options.debounceMs
+      : LIVE_REFRESH_DEBOUNCE_MS,
+  );
+}
+
+async function runScheduledLiveDataRefresh() {
+  liveRefreshTimer = 0;
+
+  if (!currentUser) return;
+
+  if (liveRefreshInFlight) {
+    liveRefreshQueued = true;
+    return;
+  }
+
+  const includeWidgets = liveRefreshIncludeWidgets;
+  liveRefreshIncludeWidgets = false;
+  liveRefreshInFlight = true;
+
+  try {
+    await refreshUserData({ includeWidgets });
+  } catch (error) {
+    console.error(error);
+  } finally {
+    liveRefreshInFlight = false;
+
+    if (liveRefreshQueued || liveRefreshIncludeWidgets) {
+      const queuedIncludeWidgets = liveRefreshIncludeWidgets;
+      liveRefreshQueued = false;
+      liveRefreshIncludeWidgets = false;
+      scheduleLiveDataRefresh({
+        includeWidgets: queuedIncludeWidgets,
+        debounceMs: LIVE_REFRESH_DEBOUNCE_MS,
+      });
+    }
+  }
+}
+
+function stopLiveUpdates() {
+  if (liveRefreshTimer) {
+    window.clearTimeout(liveRefreshTimer);
+    liveRefreshTimer = 0;
+  }
+
+  liveRefreshQueued = false;
+  liveRefreshIncludeWidgets = false;
+
+  if (liveUpdatesChannel) {
+    if (typeof supabaseClient.removeChannel === "function") {
+      void supabaseClient.removeChannel(liveUpdatesChannel);
+    } else {
+      void liveUpdatesChannel.unsubscribe?.();
+    }
+    liveUpdatesChannel = null;
+  }
+}
+
+function startLiveUpdates() {
+  stopLiveUpdates();
+
+  if (!currentUser || typeof supabaseClient.channel !== "function") return;
+
+  const channel = supabaseClient.channel(`our-memories-live:${currentUser.id}`);
+  ["posts", "comments", "likes", "post_stickers"].forEach((table) => {
+    channel.on(
+      "postgres_changes",
+      { event: "*", schema: "public", table },
+      () => scheduleLiveDataRefresh({ includeWidgets: false }),
+    );
+  });
+  channel.on(
+    "postgres_changes",
+    { event: "*", schema: "public", table: "widgets" },
+    () => scheduleLiveDataRefresh({ includeWidgets: true }),
+  );
+
+  liveUpdatesChannel = channel;
+  channel.subscribe();
 }
 
 function syncPopupScrollLock() {
@@ -8181,13 +9444,11 @@ async function refreshUserData(options = {}) {
   }
 
   await Promise.all(tasks);
-  if (includeWidgets) {
-    await refreshWeatherWidget({ render: false });
-  }
   renderTimeline();
   renderNotifications();
   if (includeWidgets) {
     renderWidgets();
+    void refreshWeatherWidget({ render: true });
   }
 }
 
@@ -8627,6 +9888,11 @@ async function uploadProfileAvatarFile(userId, file) {
 }
 
 async function saveProfile() {
+  if (profileSaveInFlight) return;
+  profileSaveInFlight = true;
+  if (saveProfileBtn) saveProfileBtn.disabled = true;
+
+  try {
   const nickname = nicknameInput.value.trim();
   const bio = String(bioInput?.value || "").trim();
   const file = pfpInput.files[0];
@@ -8681,6 +9947,10 @@ async function saveProfile() {
   renderProfilePopup(savedProfile);
 
   showMessage("updated! <3");
+  } finally {
+    profileSaveInFlight = false;
+    if (saveProfileBtn) saveProfileBtn.disabled = false;
+  }
 }
 
 async function saveInlinePostDisplayName(nextNickname) {
@@ -9020,6 +10290,11 @@ async function loadPosts(options = {}) {
 }
 
 async function saveEntry() {
+  if (entrySaveInFlight) return;
+  entrySaveInFlight = true;
+  if (saveEntryBtn) saveEntryBtn.disabled = true;
+
+  try {
   let content = "";
   let plainText = "";
 
@@ -9096,6 +10371,10 @@ async function saveEntry() {
   entryPopup.classList.remove("open");
   showMessage(successMessage);
   await loadPosts();
+  } finally {
+    entrySaveInFlight = false;
+    if (saveEntryBtn) saveEntryBtn.disabled = false;
+  }
 }
 
 function openDeleteEntryConfirmation(postId) {
@@ -9197,7 +10476,7 @@ async function toggleLike(postId) {
 
     if (result.error) throw result.error;
 
-    loadPosts();
+    await loadPosts();
   } catch (error) {
     console.error(error);
     post.likedByMe = wasLiked;
@@ -9503,6 +10782,11 @@ function renderCommentsList(postId) {
 }
 
 async function saveComment() {
+  if (commentSaveInFlight) return;
+  commentSaveInFlight = true;
+  if (saveCommentBtn) saveCommentBtn.disabled = true;
+
+  try {
   const content = commentInput.value.trim();
 
   if (!content || !currentCommentsPostId) {
@@ -9538,6 +10822,10 @@ async function saveComment() {
   await loadPosts();
   renderCommentsList(currentCommentsPostId);
   showMessage("comment posted! ♡");
+  } finally {
+    commentSaveInFlight = false;
+    if (saveCommentBtn) saveCommentBtn.disabled = false;
+  }
 }
 
 async function deleteComment(commentId) {
@@ -9680,6 +10968,16 @@ window.addEventListener("scroll", updateFloatingEntryButtonVisibility, {
 window.addEventListener("resize", syncMobileViewSwitcherVisibility, {
   passive: true,
 });
+window.addEventListener("focus", () => {
+  if (!currentUser) return;
+  void touchCurrentUserPresence({ force: true });
+  scheduleLiveDataRefresh({ includeWidgets: true, debounceMs: 120 });
+});
+document.addEventListener("visibilitychange", () => {
+  if (!currentUser || document.visibilityState !== "visible") return;
+  void touchCurrentUserPresence({ force: true });
+  scheduleLiveDataRefresh({ includeWidgets: true, debounceMs: 120 });
+});
 updateFloatingEntryButtonVisibility();
 document.addEventListener("click", (event) => {
   if (!notificationsMenu?.contains(event.target)) {
@@ -9706,13 +11004,11 @@ document.addEventListener(
 );
 
 setTheme(document.documentElement.dataset.theme);
+window
+  .matchMedia?.("(prefers-color-scheme: dark)")
+  ?.addEventListener?.("change", syncThemeWithSystemPreference);
 normalizeChromeSymbols();
-try {
-  localStorage.removeItem(MOBILE_VIEW_STORAGE_KEY);
-} catch (error) {
-  console.error(error);
-}
-activeMobileView = "timeline";
+activeMobileView = getStoredMobileView() || "timeline";
 applyMobileView();
 syncMobileViewSwitcherVisibility();
 initEntryEditor();

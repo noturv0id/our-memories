@@ -1,0 +1,17 @@
+{
+  "name": "TOTO & DODO",
+  "short_name": "TOTO & DODO",
+  "description": "Our memories diary.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#fffdfd",
+  "theme_color": "#fffdfd",
+  "icons": [
+    {
+      "src": "./icon.png",
+      "sizes": "853x853",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

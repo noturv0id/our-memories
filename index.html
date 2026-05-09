@@ -15,6 +15,14 @@
     <link rel="shortcut icon" href="./icon.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="./icon.png" />
     <link rel="manifest" href="./site.webmanifest" />
+    <link
+      rel="preload"
+      as="image"
+      href="./launching.jpeg"
+      imagesrcset="./launching.jpeg 720w, ./launching-pc.jpeg 1440w"
+      imagesizes="100vw"
+      fetchpriority="high"
+    />
     <title>TOTO & DODO</title>
     <script>
       (() => {
@@ -51,13 +59,19 @@
       href="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.snow.css"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260504-profile-23" />
+    <link rel="stylesheet" href="./styles.css?v=20260509-hardening-1" />
   </head>
   <body class="app-booting">
     <div class="launch-splash" id="launchSplash" aria-hidden="true">
       <picture>
         <source media="(min-width: 721px)" srcset="./launching-pc.jpeg" />
-        <img class="launch-splash-image" src="./launching.jpeg" alt="" />
+        <img
+          class="launch-splash-image"
+          src="./launching.jpeg"
+          alt=""
+          fetchpriority="high"
+          decoding="async"
+        />
       </picture>
     </div>
     <div class="page" data-mobile-view="timeline">
@@ -555,15 +569,12 @@
           </div>
 
           <div class="sticker-panel" id="stickerGifPanel">
-            <label class="popup-label" id="gifSearchLabel"
-              >search public gifs ♡</label
-            >
             <div class="gif-search-bar">
               <input
                 class="popup-input gif-search-input"
                 id="gifSearchInput"
                 type="text"
-                placeholder="Search GIPHY"
+                placeholder="Search GIPHY gifs"
               />
               <button class="soft-btn" id="gifSearchBtn" type="button">
                 search
@@ -615,6 +626,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
-    <script src="./script.js?v=20260504-profile-bio-1"></script>
+    <script src="./script.js?v=20260509-hardening-1"></script>
   </body>
 </html>
