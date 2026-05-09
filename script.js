@@ -11008,7 +11008,7 @@ window
   .matchMedia?.("(prefers-color-scheme: dark)")
   ?.addEventListener?.("change", syncThemeWithSystemPreference);
 normalizeChromeSymbols();
-activeMobileView = getStoredMobileView() || "timeline";
+activeMobileView = "timeline";
 applyMobileView();
 syncMobileViewSwitcherVisibility();
 initEntryEditor();

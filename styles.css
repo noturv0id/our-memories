@@ -804,25 +804,27 @@ html[data-theme="dark"] #widgetPopup .popup-card.photo-history-popup-card #close
 }
 
 html[data-theme="dark"] .photo-history-delete-btn {
-  background: rgba(47, 32, 54, 0.96);
-  border-color: var(--border-2);
-  color: var(--text);
+  background: rgba(47, 32, 54, 0.78);
+  border-color: rgba(126, 86, 108, 0.74);
+  color: #f4deeb;
   box-shadow: 0 8px 16px rgba(9, 5, 13, 0.28);
 }
 
 html[data-theme="dark"] .photo-history-delete-btn:hover {
-  background: var(--card-solid);
+  border-color: rgba(165, 91, 127, 0.82);
+  background: rgba(61, 39, 61, 0.96);
 }
 
 html[data-theme="dark"] .widget-history-delete-btn {
-  background: rgba(47, 32, 54, 0.96);
-  border-color: var(--border-2);
-  color: var(--text);
+  background: rgba(47, 32, 54, 0.78);
+  border-color: rgba(126, 86, 108, 0.74);
+  color: #f4deeb;
   box-shadow: 0 8px 16px rgba(9, 5, 13, 0.28);
 }
 
 html[data-theme="dark"] .widget-history-delete-btn:hover {
-  background: var(--card-solid);
+  border-color: rgba(165, 91, 127, 0.82);
+  background: rgba(61, 39, 61, 0.96);
 }
 
 html[data-theme="dark"] .photo-history-card {
@@ -893,6 +895,17 @@ html[data-theme="dark"] #widgetPopup .popup-input {
 html[data-theme="dark"] .wishlist-item-row {
   background: rgba(41, 28, 47, 0.94);
   border-color: var(--border-2);
+}
+
+html[data-theme="dark"] .comment-item.photo-widget-comment-item .photo-widget-comment-actions .delete-comment-btn {
+  background: rgba(47, 32, 54, 0.78);
+  border-color: rgba(126, 86, 108, 0.74);
+  color: #f4deeb;
+}
+
+html[data-theme="dark"] .comment-item.photo-widget-comment-item .photo-widget-comment-actions .delete-comment-btn:hover {
+  border-color: rgba(165, 91, 127, 0.82);
+  background: rgba(61, 39, 61, 0.96);
 }
 
 html[data-theme="dark"] .date-edit-item {
@@ -1881,30 +1894,51 @@ html[data-theme="dark"] .photo-color-trigger {
 }
 
 .widget-history-delete-btn {
-  width: 24px;
-  height: 24px;
-  border: 1px solid rgba(216, 165, 185, 0.78);
-  border-radius: 999px;
-  background: rgba(255, 250, 253, 0.98);
-  color: #7d5267;
-  font-size: 0.86rem;
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(216, 165, 185, 0.68);
+  border-radius: 11px;
+  background: rgba(255, 250, 253, 0.74);
+  color: #8f5871;
+  font-size: 0;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 6px 14px rgba(198, 133, 160, 0.14);
+  box-shadow: 0 8px 18px rgba(198, 133, 160, 0.12);
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease,
-    background 0.2s ease;
+    background 0.2s ease,
+    border-color 0.2s ease;
   flex: 0 0 auto;
 }
 
+.widget-history-delete-btn::before,
+.widget-history-delete-btn::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.widget-history-delete-btn::before {
+  transform: rotate(45deg);
+}
+
+.widget-history-delete-btn::after {
+  transform: rotate(-45deg);
+}
+
 .widget-history-delete-btn:hover {
-  transform: scale(1.06);
-  background: #fffdfd;
-  box-shadow: 0 10px 18px rgba(198, 133, 160, 0.2);
+  transform: translateY(-1px);
+  border-color: rgba(216, 126, 164, 0.78);
+  background: rgba(255, 248, 252, 0.96);
+  box-shadow: 0 12px 22px rgba(198, 133, 160, 0.18);
 }
 
 .widget-history-summary {
@@ -1952,32 +1986,52 @@ html[data-theme="dark"] .photo-color-trigger {
 
 .photo-history-delete-btn {
   position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 22px;
-  height: 22px;
-  border: 1px solid rgba(216, 165, 185, 0.78);
-  border-radius: 999px;
-  background: rgba(255, 250, 253, 0.98);
-  color: #7d5267;
-  font-size: 0.82rem;
+  top: 8px;
+  right: 8px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(216, 165, 185, 0.68);
+  border-radius: 11px;
+  background: rgba(255, 250, 253, 0.8);
+  color: #8f5871;
+  font-size: 0;
   line-height: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 6px 14px rgba(198, 133, 160, 0.16);
+  box-shadow: 0 8px 18px rgba(198, 133, 160, 0.14);
   transition:
     transform 0.2s ease,
     box-shadow 0.2s ease,
-    background 0.2s ease;
+    background 0.2s ease,
+    border-color 0.2s ease;
   z-index: 2;
 }
 
+.photo-history-delete-btn::before,
+.photo-history-delete-btn::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.photo-history-delete-btn::before {
+  transform: rotate(45deg);
+}
+
+.photo-history-delete-btn::after {
+  transform: rotate(-45deg);
+}
+
 .photo-history-delete-btn:hover {
-  transform: scale(1.06);
-  background: #fffdfd;
-  box-shadow: 0 10px 18px rgba(198, 133, 160, 0.2);
+  transform: translateY(-1px);
+  border-color: rgba(216, 126, 164, 0.78);
+  background: rgba(255, 248, 252, 0.96);
+  box-shadow: 0 12px 22px rgba(198, 133, 160, 0.2);
 }
 
 .photo-history-frame {
@@ -2247,14 +2301,47 @@ html[data-theme="dark"] .photo-color-trigger {
 }
 
 .comment-item.photo-widget-comment-item .photo-widget-comment-actions .delete-comment-btn {
-  min-width: 28px;
-  min-height: 28px;
-  padding: 4px;
-  line-height: 1;
+  position: relative;
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  border-color: rgba(216, 165, 185, 0.68);
+  border-radius: 12px;
+  background: rgba(255, 250, 253, 0.74);
+  color: #8f5871;
+  font-size: 0;
+  line-height: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1rem;
+  box-shadow: 0 8px 18px rgba(198, 133, 160, 0.12);
+}
+
+.comment-item.photo-widget-comment-item .photo-widget-comment-actions .delete-comment-btn::before,
+.comment-item.photo-widget-comment-item .photo-widget-comment-actions .delete-comment-btn::after {
+  content: "";
+  position: absolute;
+  width: 13px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.comment-item.photo-widget-comment-item .photo-widget-comment-actions .delete-comment-btn::before {
+  transform: rotate(45deg);
+}
+
+.comment-item.photo-widget-comment-item .photo-widget-comment-actions .delete-comment-btn::after {
+  transform: rotate(-45deg);
+}
+
+.comment-item.photo-widget-comment-item .photo-widget-comment-actions .delete-comment-btn:hover {
+  border-color: rgba(216, 126, 164, 0.78);
+  background: rgba(255, 248, 252, 0.96);
+  opacity: 1;
+  box-shadow: 0 12px 22px rgba(198, 133, 160, 0.18);
 }
 
 .photo-widget-comments-list {
@@ -5986,10 +6073,10 @@ html[data-theme="dark"] .typed-sticker-preview:focus-visible {
   }
 
   .photo-history-delete-btn {
-    top: 6px;
-    right: 6px;
-    width: 26px;
-    height: 26px;
+    top: 8px;
+    right: 8px;
+    width: 30px;
+    height: 30px;
   }
 
   .comment-item.photo-widget-comment-item {
