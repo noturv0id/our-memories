@@ -742,12 +742,19 @@ const entryPreviewTitle = document.getElementById("entryPreviewTitle");
 const entryPreviewList = document.getElementById("entryPreviewList");
 let activeEntryPreviewEntries = [];
 let lastScrollY = window.scrollY || 0;
+let floatingEntryVisibilityFrame = 0;
+let mobileViewSwitcherFrame = 0;
 const MOBILE_VIEW_STORAGE_KEY = "ourMemoriesMobileView";
 const THEME_STORAGE_KEY = "ourMemoriesTheme";
 const MAC_TABBED_LAYOUT_QUERY = "(min-width: 721px) and (max-width: 1500px)";
 const PHONE_LAYOUT_QUERY = "(max-width: 720px)";
-const BOOT_SPLASH_MIN_MS = 900;
-const BOOT_SPLASH_FADE_MS = 450;
+const macTabbedLayoutMedia = window.matchMedia?.(MAC_TABBED_LAYOUT_QUERY);
+const phoneLayoutMedia = window.matchMedia?.(PHONE_LAYOUT_QUERY);
+const reducedMotionMedia = window.matchMedia?.(
+  "(prefers-reduced-motion: reduce)",
+);
+const BOOT_SPLASH_MIN_MS = 520;
+const BOOT_SPLASH_FADE_MS = 320;
 const LIVE_REFRESH_DEBOUNCE_MS = 450;
 const bootStartedAt =
   typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -835,13 +842,11 @@ function setWidgetPopupLikeButton(widget = null) {
 }
 
 function isTabbedLayoutActive() {
-  return (
-    window.matchMedia(MAC_TABBED_LAYOUT_QUERY).matches || isMobileLayoutActive()
-  );
+  return Boolean(macTabbedLayoutMedia?.matches || isMobileLayoutActive());
 }
 
 function isMobileLayoutActive() {
-  return window.matchMedia(PHONE_LAYOUT_QUERY).matches;
+  return Boolean(phoneLayoutMedia?.matches);
 }
 
 function shouldUseLaunchSplash() {
@@ -898,7 +903,7 @@ function setMobileView(nextView, options = {}) {
 
   if (
     isTabbedLayoutActive() &&
-    !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+    !reducedMotionMedia?.matches
   ) {
     const activeSection = getMobileViewSection(activeMobileView);
     activeSection?.animate?.(
@@ -1046,6 +1051,24 @@ function updateFloatingEntryButtonVisibility() {
   }
 
   lastScrollY = currentScrollY;
+}
+
+function requestFloatingEntryButtonVisibilityUpdate() {
+  if (floatingEntryVisibilityFrame) return;
+
+  floatingEntryVisibilityFrame = requestAnimationFrame(() => {
+    floatingEntryVisibilityFrame = 0;
+    updateFloatingEntryButtonVisibility();
+  });
+}
+
+function requestMobileViewSwitcherVisibilitySync() {
+  if (mobileViewSwitcherFrame) return;
+
+  mobileViewSwitcherFrame = requestAnimationFrame(() => {
+    mobileViewSwitcherFrame = 0;
+    syncMobileViewSwitcherVisibility();
+  });
 }
 
 function isGifSticker(value) {
@@ -2407,7 +2430,11 @@ function normalizeMissYouWidget(widget) {
 
   const todayKey = getTodayDateKey();
   if (!widget.data) {
-    widget.data = { countsByUser: {}, lastResetDate: todayKey };
+    widget.data = {
+      countsByUser: {},
+      totalCountsByUser: {},
+      lastResetDate: todayKey,
+    };
     return true;
   }
 
@@ -2431,6 +2458,22 @@ function normalizeMissYouWidget(widget) {
     changed = true;
   }
 
+  if (
+    !widget.data.totalCountsByUser ||
+    typeof widget.data.totalCountsByUser !== "object"
+  ) {
+    const migratedTotals = {};
+
+    Object.entries(widget.data.countsByUser || {}).forEach(([userId, count]) => {
+      if (Number.isFinite(count) && count > 0) {
+        migratedTotals[userId] = count;
+      }
+    });
+
+    widget.data.totalCountsByUser = migratedTotals;
+    changed = true;
+  }
+
   if (widget.data.lastResetDate !== todayKey) {
     widget.data.countsByUser = {};
     widget.data.lastResetDate = todayKey;
@@ -2441,6 +2484,14 @@ function normalizeMissYouWidget(widget) {
     const count = widget.data.countsByUser[userId];
     if (!Number.isFinite(count) || count < 0) {
       widget.data.countsByUser[userId] = 0;
+      changed = true;
+    }
+  });
+
+  Object.keys(widget.data.totalCountsByUser).forEach((userId) => {
+    const count = widget.data.totalCountsByUser[userId];
+    if (!Number.isFinite(count) || count < 0) {
+      widget.data.totalCountsByUser[userId] = 0;
       changed = true;
     }
   });
@@ -2575,6 +2626,36 @@ function getWidgetLikeButtonMarkup(widget) {
   `;
 }
 
+function getWidgetHeaderLikeButtonMarkup(widget, extraClass = "") {
+  if (!widget || !isLikeableWidget(widget)) return "";
+
+  const currentUserId = currentUser?.id || currentProfile?.id || "";
+  const likes = getWidgetLikeUserIds(widget);
+  const likedByMe = Boolean(currentUserId && likes.includes(currentUserId));
+  const isPending = pendingWidgetLikeIds.has(widget.id);
+  const className = [
+    "widget-header-like-btn",
+    "widget-like-btn",
+    likedByMe ? "liked" : "",
+    isPending ? "is-pending" : "",
+    extraClass,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return `
+    <button
+      class="${className}"
+      type="button"
+      data-widget-like-id="${escapeHtml(widget.id)}"
+      aria-label="${likedByMe ? "liked widget" : "like widget"}"
+      aria-pressed="${String(likedByMe)}"
+    >
+      ${getWidgetLikeButtonMarkup(widget)}
+    </button>
+  `;
+}
+
 function getWidgetLikeContentSignature(widget) {
   if (!widget || !isLikeableWidget(widget)) return "";
 
@@ -2655,6 +2736,26 @@ function getProfileDisplayName(profile, fallback) {
   if (!profile || typeof profile !== "object") return fallback;
   const name = String(profile.nickname || profile.username || "").trim();
   return name || fallback;
+}
+
+function getProfileIdentityText(profile) {
+  return `${profile?.nickname || ""} ${profile?.username || ""}`.toLowerCase();
+}
+
+function getProfileSubjectPronoun(profile) {
+  const identity = getProfileIdentityText(profile);
+
+  if (identity.includes("toto")) return "he";
+  if (identity.includes("dodo")) return "she";
+  return "they";
+}
+
+function getProfileObjectPronoun(profile) {
+  const subjectPronoun = getProfileSubjectPronoun(profile);
+
+  if (subjectPronoun === "he") return "him";
+  if (subjectPronoun === "she") return "her";
+  return "them";
 }
 
 function getProfileBioFromAuthUser(user) {
@@ -2838,6 +2939,27 @@ function getProfileHandle(profile, fallbackUserId = "") {
   return fallbackUserId ? `id ${fallbackUserId.slice(0, 8)}` : "@memory";
 }
 
+function getRelatedProfiles(profileUserId, fallbackProfile = null) {
+  const relatedProfiles = [
+    getKnownProfileById(profileUserId, fallbackProfile),
+    currentProfile,
+    ...knownProfiles,
+  ].filter((profile) => profile?.id);
+
+  return relatedProfiles.filter(
+    (profile, index, list) =>
+      list.findIndex((item) => item.id === profile.id) === index,
+  );
+}
+
+function getProfileMissYouStatLabel(userId, profile = null) {
+  const counterpartProfile = getRelatedProfiles(userId, profile).find(
+    (candidateProfile) => candidateProfile?.id !== userId,
+  );
+
+  return `missed ${getProfileObjectPronoun(counterpartProfile)}`;
+}
+
 function formatProfileDurationShort(dateString) {
   const timestamp = new Date(dateString).getTime();
   if (!timestamp) return "new";
@@ -2939,6 +3061,23 @@ function getProfileLikeCount(userId) {
   return postAndCommentLikes + widgetLikes;
 }
 
+function getProfileMissYouCount(userId) {
+  if (!userId) return 0;
+
+  const missYouWidget = getMissYouWidget();
+  if (!missYouWidget) return 0;
+
+  normalizeMissYouWidget(missYouWidget);
+  const countsByUser =
+    missYouWidget.data?.countsByUser &&
+    typeof missYouWidget.data.countsByUser === "object"
+      ? missYouWidget.data.countsByUser
+      : {};
+
+  const total = countsByUser[userId];
+  return Number.isFinite(total) && total > 0 ? total : 0;
+}
+
 function getProfileLatestActivityTimestamp(userId, profile = null) {
   if (!userId) return 0;
 
@@ -3029,6 +3168,7 @@ function getProfileStats(userId, profile = null) {
   return {
     postsCount: posts.filter((post) => post?.userId === userId).length,
     likesCount: getProfileLikeCount(userId),
+    missYouCount: getProfileMissYouCount(userId),
     joined: getProfileJoinedInfo(userId, profile),
     presence: getProfilePresenceInfo(userId, profile),
   };
@@ -3131,6 +3271,17 @@ function renderProfilePopup(profile, options = {}) {
 
   if (profileLikesStat) {
     profileLikesStat.textContent = String(profileStats.likesCount);
+  }
+
+  if (profileMissYouStat) {
+    profileMissYouStat.textContent = String(profileStats.missYouCount);
+  }
+
+  if (profileMissYouStatLabel) {
+    profileMissYouStatLabel.textContent = getProfileMissYouStatLabel(
+      profileUserId,
+      resolvedProfile,
+    );
   }
 
   if (profileJoinedStat) {
@@ -3332,9 +3483,14 @@ async function incrementMissYouWidget() {
   normalizeMissYouWidget(widget);
   widget.data.countsByUser[activeUserId] =
     (widget.data.countsByUser[activeUserId] || 0) + 1;
+  widget.data.totalCountsByUser[activeUserId] =
+    (widget.data.totalCountsByUser[activeUserId] || 0) + 1;
   widget.data.lastResetDate = getTodayDateKey();
 
   refreshMissYouWidgetDom(widget);
+  if (activeProfilePopupUserId === activeUserId) {
+    renderProfilePopup(getKnownProfileById(activeUserId, currentProfile));
+  }
   queueMissYouWidgetSave();
 }
 
@@ -3660,6 +3816,7 @@ function getWidgetContent(widget) {
     normalizedId === "dates" || normalizedTitle.includes("important dates");
 
   if (normalizedId === "song") {
+    normalizeWidgetLikesData(widget);
     const songData = widget.data || {};
     const songName = escapeHtml(
       songData.songName || "drop a spotify track into the widget editor ♡",
@@ -3708,7 +3865,7 @@ function getWidgetContent(widget) {
 
   if (isNoteWidget) {
     normalizeWidgetLikesData(widget);
-    return `<div style="font-size:0.96rem;line-height:1.5;white-space:normal;word-break:break-word;overflow-wrap:anywhere;">${widget.data?.text || ""}</div>`;
+    return `<div class="note-widget-text">${widget.data?.text || ""}</div>`;
   }
 
   if (isDatesWidget) {
@@ -4199,9 +4356,7 @@ async function loadWidgets(options = {}) {
 
 function renderWidgets() {
   const shouldAnimateMobileReorder = isTabbedLayoutActive();
-  const prefersReducedMotion = window.matchMedia?.(
-    "(prefers-reduced-motion: reduce)",
-  ).matches;
+  const prefersReducedMotion = reducedMotionMedia?.matches;
 
   previousMobileWidgetRects.clear();
   if (shouldAnimateMobileReorder) {
@@ -4391,6 +4546,7 @@ function renderWidgets() {
           >
             ${isMinimized ? "+" : "–"}
           </button>
+          ${!isVirtualWidget ? getWidgetHeaderLikeButtonMarkup(widget) : ""}
           ${hasHistory && !isVirtualWidget ? `<button class="widget-history-btn" type="button" data-widget-history-id="${widget.id}">🕘</button>` : ""}
           ${
             !isVirtualWidget &&
@@ -7061,6 +7217,10 @@ const profileSummaryJoined = document.getElementById("profileSummaryJoined");
 const profileSummaryBio = document.getElementById("profileSummaryBio");
 const profilePostsStat = document.getElementById("profilePostsStat");
 const profileLikesStat = document.getElementById("profileLikesStat");
+const profileMissYouStat = document.getElementById("profileMissYouStat");
+const profileMissYouStatLabel = document.getElementById(
+  "profileMissYouStatLabel",
+);
 const profileJoinedStat = document.getElementById("profileJoinedStat");
 const profileJoinedStatLabel = document.getElementById(
   "profileJoinedStatLabel",
@@ -7597,26 +7757,12 @@ function getSongWidgetCommentPreviewMarkup(source, options = {}) {
   const preview = getSongWidgetCommentPreviewData(source);
   const coverUrl = String(preview.coverUrl || "").trim();
   const songName = escapeHtml(preview.songName || "saved song ♡");
-  const durationLabel = escapeHtml(preview.durationLabel || "");
   const caption = escapeHtml(preview.caption || preview.durationLabel || "");
-  const shouldShowTime = Boolean(durationLabel) && durationLabel !== caption;
 
   return `
     <div class="song-widget-comment-preview-card${compact ? " is-inline" : ""}" aria-label="song preview">
-      <div class="song-widget-comment-preview-art">
-        ${
-          coverUrl
-            ? `<img class="song-widget-comment-preview-image" src="${escapeHtml(coverUrl)}" alt="commented song cover" loading="lazy" decoding="async" />`
-            : '<div class="song-widget-comment-preview-empty">no cover ♡</div>'
-        }
-      </div>
       <div class="song-widget-comment-preview-meta">
         <div class="song-widget-comment-preview-title">${songName}</div>
-        ${
-          shouldShowTime
-            ? `<div class="song-widget-comment-preview-time">${durationLabel}</div>`
-            : ""
-        }
         ${
           caption
             ? `<div class="song-widget-comment-preview-caption">${caption}</div>`
@@ -8261,6 +8407,10 @@ function clearWidgetHistory(widgetId) {
 function openWidgetHistory(widgetId) {
   const widget = widgets.find((item) => item.id === widgetId);
   if (!widget) return;
+  const normalizedId = String(widget.id || "")
+    .toLowerCase()
+    .trim();
+  const normalizedTitle = String(widget.title || "").toLowerCase();
 
   if (isPhotoPinWidget(widget)) {
     renderPhotoHistoryPopup(widget);
@@ -8269,7 +8419,12 @@ function openWidgetHistory(widgetId) {
 
   widgetPopupCard?.classList.remove("photo-history-popup-card");
   const historyEntries = getWidgetHistoryEntries(widget);
-  widgetPopupTitle.textContent = `${widget.title} history`;
+  widgetPopupTitle.textContent =
+    normalizedId === "note" ||
+    normalizedTitle.includes("little note") ||
+    normalizedTitle.includes("smol note")
+      ? widget.title
+      : `${widget.title} history`;
   saveWidgetBtn.style.display = "none";
   setHeaderWidgetSaveVisibility(false);
   setWidgetPopupLikeButton(null);
@@ -8742,12 +8897,7 @@ function formatNotificationRelativeTime(dateString) {
 }
 
 function getNotificationActorPronoun(profile) {
-  const identity =
-    `${profile?.nickname || ""} ${profile?.username || ""}`.toLowerCase();
-
-  if (identity.includes("toto")) return "he";
-  if (identity.includes("dodo")) return "she";
-  return "they";
+  return getProfileSubjectPronoun(profile);
 }
 
 function getNotificationTypeLabel(notificationOrType) {
@@ -8941,7 +9091,12 @@ function getWidgetNotificationName(widget) {
     .trim();
   const normalizedTitle = String(widget?.title || "").toLowerCase();
   if (normalizedId === "song") return "now playing";
-  if (normalizedId === "note") return "smol note";
+  if (
+    normalizedId === "note" ||
+    normalizedTitle.includes("little note") ||
+    normalizedTitle.includes("smol note")
+  )
+    return "smol note";
   if (normalizedId === "entry-preview") return "TOTO’S POEMS";
   if (normalizedId === "dates" || normalizedTitle.includes("important dates"))
     return "important dates";
@@ -10962,10 +11117,10 @@ mobileViewButtons.forEach((button) => {
     setMobileView(button.dataset.mobileView || "timeline");
   });
 });
-window.addEventListener("scroll", updateFloatingEntryButtonVisibility, {
+window.addEventListener("scroll", requestFloatingEntryButtonVisibilityUpdate, {
   passive: true,
 });
-window.addEventListener("resize", syncMobileViewSwitcherVisibility, {
+window.addEventListener("resize", requestMobileViewSwitcherVisibilitySync, {
   passive: true,
 });
 window.addEventListener("focus", () => {
