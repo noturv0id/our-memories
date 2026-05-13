@@ -1064,10 +1064,7 @@ function getCurrentAppZoom() {
 }
 
 function getAppTextBoostForZoom(zoom) {
-  const normalizedZoom = normalizeAppZoom(zoom);
-  if (normalizedZoom >= DEFAULT_APP_ZOOM) return 1;
-
-  return Math.min(2.75, Math.pow(1 / normalizedZoom, 0.7));
+  return 1;
 }
 
 function setAppZoom(zoom, options = {}) {
