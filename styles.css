@@ -1807,10 +1807,14 @@ html[data-theme="dark"] .photo-color-trigger {
   font-weight: 700;
   line-height: 1.1;
   text-align: center;
-  white-space: nowrap;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(100% - 18px);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
   text-shadow: 0 2px 8px rgba(30, 18, 28, 0.75);
   transform: translate(-50%, -50%);
-  max-width: none;
 }
 
 .photo-editor-preview-text {
@@ -2556,8 +2560,12 @@ html[data-theme="dark"] .photo-color-trigger {
   line-height: 1.1;
   text-align: center;
   text-shadow: 0 2px 8px rgba(30, 18, 28, 0.75);
-  max-width: none;
-  white-space: nowrap;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: calc(100% - 18px);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .photo-widget-comment-preview-card.is-inline .photo-widget-comment-preview-text {
