@@ -822,11 +822,6 @@ function normalizeChromeSymbols() {
     quotePillEl.textContent = "⊹˚₊ forever and always ₊˚⊹";
   }
 
-  const notificationsIconEl = document.querySelector(".notifications-btn-icon");
-  if (notificationsIconEl) {
-    notificationsIconEl.textContent = "🕭";
-  }
-
   const notificationTitleEl = document.querySelector(".notifications-title");
   if (notificationTitleEl) {
     notificationTitleEl.textContent = "inbox ♡";
